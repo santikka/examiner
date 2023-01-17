@@ -3,8 +3,10 @@
 
 library(dplyr)
 library(shiny)
+library(shinyjs)
 library(shinyFeedback)
 library(sortable)
+library(ggplot2)
 
 options(shiny.fullstacktrace = TRUE)
 
@@ -12,15 +14,35 @@ source("utils.R")
 
 rvals <- reactiveValues(
   exam = NULL,
+  start = TRUE,
+  plots = list(),
+  rooms = list()
 )
 
 rooms <- rjson::fromJSON(file = "rooms.json") |>
   process_layout()
 
+js_code <- "
+  shinyjs.copyToClipboard = function(params) {
+    const textCopy = copyText(params);
+    document.addEventListener('copy', textCopy);
+    document.execCommand('copy');
+    document.removeEventListener('copy', textCopy);
+  }
+  function copyText(text) {
+    return function handleCopyEvent(evt) {
+      evt.clipboardData.setData('text', text);
+      evt.preventDefault();
+    }
+  }
+"
+
 ui <- fluidPage(
   tags$head(
     tags$style(HTML(".bucket-list-container {min-height: 350px;}"))
   ),
+  useShinyjs(),
+  extendShinyjs(text = js_code, functions = c("copyToClipboard")),
   useShinyFeedback(),
   titlePanel("Examiner"),
   fluidRow(
@@ -56,6 +78,7 @@ ui <- fluidPage(
             ),
             tabPanel(
               "Design",
+              value = "design",
               br(),
               selectInput(
                 "exam_rooms",
@@ -69,22 +92,13 @@ ui <- fluidPage(
               uiOutput("exam_buckets")
             ),
             tabPanel(
-              "MaA 102",
-              value = "maa_102",
+              "Output",
               br(),
-              uiOutput("maa_102_output")
-            ),
-            tabPanel(
-              "MaA 103",
-              value = "maa_103",
-              br(),
-              uiOutput("maa_103_output")
-            ),
-            tabPanel(
-              "MaD 202",
-              value = "mad_202",
-              br(),
-              uiOutput("mad_202_output")
+              actionButton(
+                "clip",
+                label = "Copy student emails to clipboard",
+                icon = icon("clipboard")
+              )
             )
           )
         )
@@ -94,6 +108,40 @@ ui <- fluidPage(
 )
 
 server <- function(input, output) {
+
+  # Add room specific elements
+  observe({
+    if (rvals$start) {
+      rvals$start <- FALSE
+      nm <- names(rooms)
+      lapply(rev(seq_along(rooms)), function(i) {
+        val <- rooms[[i]]$value
+        # Room tabs
+        insertTab(
+          inputId = "nav_tabs",
+          tabPanel(
+            nm[i],
+            value = val,
+            br(),
+            uiOutput(paste0(val, "_output"))
+          ),
+          target = "design",
+          position = "after"
+        )
+        # Seating arrangement download links
+        insertUI(
+          selector = "#clip",
+          where = "afterEnd",
+          ui = downloadButton(
+            paste0(val, "_seating"),
+            paste0("Export ", nm[i], " Seating")
+          )
+        )
+        # Room list download links TODO
+      })
+      rvals$start <- FALSE
+    }
+  })
 
   # File input occurs
   raw_data <- reactive({
@@ -174,6 +222,7 @@ server <- function(input, output) {
       multi <- exam |>
         filter(!special %in% input$special_groups) |>
         filter(id %in% multi_id)
+      rvals$multi <- multi
 
       # Others
       exam <- exam |>
@@ -283,8 +332,10 @@ server <- function(input, output) {
       for (i in seq_along(rooms)) {
         if (nm[i] %in% input$exam_rooms) {
           showTab(inputId = "nav_tabs", target = rooms[[i]]$value)
+          showElement(id = paste0(rooms[[i]]$value, "_seating"))
         } else {
           hideTab(inputId = "nav_tabs", target = rooms[[i]]$value)
+          hideElement(id = paste0(rooms[[i]]$value, "_seating"))
         }
       }
     },
@@ -298,21 +349,24 @@ server <- function(input, output) {
     exam <- rvals$exam_standard
     if (!is.null(design)) {
       exams <- character(0L)
+      n <- integer(0L)
       for (i in seq_len(nrow(design))) {
         if (any(design[i,-c(1:4)]) > 0) {
+          idx <- which(design[i, -c(1:3)] > 0)
           exams <- c(
             exams,
-            paste0(
-              design$exam[i],
-              " (part ",
-              which(design[i, -c(1:3)] > 0),
-              ")"
-            )
+            paste0(design$exam[i], " (part ", idx, ")")
           )
+          n <- c(n, as.integer(design[i, -c(1:3)])[idx])
         } else {
           exams <- c(exams, design$exam[i])
+          n <- c(n, design$n[i])
         }
       }
+      rvals$design_partition <- data.frame(
+        exam = exams,
+        n = n
+      )
       args <- c(
         list(
           add_rank_list(
@@ -348,15 +402,10 @@ server <- function(input, output) {
         observeEvent(input[[in_]], {
           sel <- input[[in_]]
           if (length(sel) > 0L) {
-            part1 <- grepl("(part 1)", sel)
-            part2 <- grepl("(part 2)", sel)
-            sel <- gsub("\\s\\(part [1-2]\\)", "", sel)
-            e <- rvals$design |>
+            e <- rvals$design_partition |>
               filter(exam %in% sel)
-            e$part <- 1L
-            e[e$exam %in% sel[part1], ]$part <- 1L
-            e[e$exam %in% sel[part2], ]$part <- 2L
             e <- e[match(e$exam, sel), ]
+            #rvals$rooms[[j]] <- e
             room <- try(process_seating(e, rooms[[j]]), silent = TRUE)
             assigned <- room$layout |> filter(exam != "")
             if (inherits(room, "try-error")) {
@@ -364,28 +413,28 @@ server <- function(input, output) {
                 paste0("Room ", j, " does not have enough space!")
               )
             } else {
+              p <- ggplot(room$layout, aes(x = x, y = y, width = 1, height = 1)) +
+                geom_tile(
+                  data = assigned,
+                  aes(x = x, y = y, width = 1, height = 1, fill = exam)
+                ) +
+                geom_tile(fill = "transparent", color = "black") +
+                coord_equal() +
+                theme_classic(base_size = 20) +
+                guides(color = "none") +
+                theme(
+                  axis.text = element_blank(),
+                  axis.line = element_blank(),
+                  axis.ticks = element_blank(),
+                  axis.title = element_blank(),
+                  panel.grid = element_blank(),
+                  legend.direction = "vertical",
+                  legend.position = "bottom",
+                  legend.title = element_blank()
+                )
+              rvals$plots[[rooms[[j]]$value]] <- p
               output[[out_]] <- renderUI({
-                renderPlot({
-                  ggplot(room$layout, aes(x = x, y = y, width = 1, height = 1)) +
-                    geom_tile(
-                      data = assigned,
-                      aes(x = x, y = y, width = 1, height = 1, fill = exam)
-                    ) +
-                    geom_tile(fill = "transparent", color = "black") +
-                    coord_equal() +
-                    theme_classic(base_size = 20) +
-                    guides(color = "none") +
-                    theme(
-                      axis.text = element_blank(),
-                      axis.line = element_blank(),
-                      axis.ticks = element_blank(),
-                      axis.title = element_blank(),
-                      panel.grid = element_blank(),
-                      legend.direction = "vertical",
-                      legend.position = "bottom",
-                      legend.title = element_blank()
-                    )
-                }, height = 450 + 18 * nrow(e))
+                renderPlot(p, height = 450 + 18 * nrow(e))
               })
             }
           }
@@ -393,6 +442,35 @@ server <- function(input, output) {
       })
     }
   })
+
+  # Emails to clipboard
+  observeEvent(input$clip, {
+    if (!is.null(rvals$exam_standard)) {
+      clip_str <- paste0(unique(rvals$exam_standard$email), collapse = ",")
+      js$copyToClipboard(clip_str)
+    }
+  })
+
+  # Seating download links
+  lapply(seq_along(rooms), function(i) {
+    val <- rooms[[i]]$value
+    output[[paste0(val, "_seating")]] <- downloadHandler(
+      filename = function() {paste0(val, "_seating.pdf")},
+      content = function(file) {
+        pdf(file, paper = "default")
+        plot(rvals$plots[[val]])
+        dev.off()
+      }
+    )
+  })
+
+  # Student list download links
+  #lapply(seq_along(rooms), function(i) {
+  #  val <- rooms[[i]]$value
+  #  e <- rvals$rooms[[i]]
+  #  exam <- rvals$exam_standard |> filter(exam %in% e$exam)
+  #})
+
 }
 
 shinyApp(ui = ui, server = server)

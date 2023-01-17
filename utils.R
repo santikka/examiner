@@ -32,8 +32,7 @@ process_seating <- function(e, room) {
     }
     idx <- seq.int(free_row, nr, by = 2)
     space <- cumsum(row_counts$n[idx])
-    part <- paste0("part ", e$part[i])
-    m <- e[[part]][i]
+    m <- e$n[i]
     last <- idx[which(space >= m)[1L]]
     idx_used <- idx[seq_len(which(idx == last))]
     reserved[idx_used] <- TRUE
