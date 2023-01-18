@@ -16,7 +16,6 @@ process_layout <- function(x) {
 process_seating <- function(e, room) {
   room$layout$exam <- ""
   lo <- room$layout
-  free_row <- 1L
   row_counts <- lo |>
     group_by(y) |>
     summarise(
@@ -30,13 +29,17 @@ process_seating <- function(e, room) {
     if (all(reserved)) {
       stop("Room is full")
     }
+    free_row <- min(rows[!reserved])
     idx <- seq.int(free_row, nr, by = 2)
     space <- cumsum(row_counts$n[idx])
     m <- e$n[i]
-    last <- idx[which(space >= m)[1L]]
+    fit_idx <- which(space >= m)
+    if (length(fit_idx) == 0) {
+      stop("Not enough space for exam", e$exam)
+    }
+    last <- idx[fit_idx[1L]]
     idx_used <- idx[seq_len(which(idx == last))]
     reserved[idx_used] <- TRUE
-    free_row <- min(rows[!reserved])
     for (j in idx_used) {
       fill_x <- row_counts$idx[[j]]
       fill_x <- fill_x[seq_len(min(m, length(fill_x)))]
@@ -45,4 +48,50 @@ process_seating <- function(e, room) {
     }
   }
   room
+}
+
+student_list <- function(x, main) {
+  title <- textGrob(
+    main, x = unit(0.025, "npc"),
+    gp = gpar(fontsize = 10, fontface = "bold"),
+    just = "left"
+  )
+  cols <- c("Sukunimi", "Etunimet", "Läsnä")
+  y <- x %>% select(all_of(cols)) %>% distinct()
+  n <- nrow(y)
+  y_list <- list()
+  tables <- list()
+  lim <- 60L
+  if (n > lim) {
+    y_list[[1L]] <- y |> slice(seq.int(1L, lim))
+    y_list[[2L]] <- y |> slice(seq.int(lim + 1L, n))
+  } else {
+    y_list[[1]] <- y
+  }
+  for (i in seq_along(y_list)) {
+    tables[[i]] <- tableGrob(
+      y_list[[i]],
+      rows = NULL,
+      theme = ttheme_minimal(
+        base_size = 9,
+        padding = unit(c(3, 2), "mm"),
+        core = list(
+          bg_params = list(fill = "white", col = "black"),
+          fg_params = list(hjust = 0, x = 0.05)
+        ),
+        rowhead = list(
+          fg_params = list(fontface = "plain", hjust = 0, x = 0)
+        )
+      )
+    )
+  }
+  if (length(y_list) > 1L) {
+    grid.arrange(
+      gtable_combine(tables[[1L]], tables[[2L]], along = 1),
+      ncol = 1,
+      top = textGrob(main)
+    )
+  } else {
+    grid.arrange(tables[[1L]], ncol = 1, top = textGrob(main))
+  }
 }

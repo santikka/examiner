@@ -1,5 +1,5 @@
 # Requires the following packages
-# install.packages(c("dplyr", "DT", "readxl", "shiny", "shinyFeedback", "sortable))
+# install.packages(c("data.table", "dplyr", "DT", "grid", "gtable", "gridExtra", "readxl", "shiny", "shinyjs", "shinyFeedback", "sortable", "stringr"))
 
 library(dplyr)
 library(shiny)
@@ -7,6 +7,9 @@ library(shinyjs)
 library(shinyFeedback)
 library(sortable)
 library(ggplot2)
+library(grid)
+library(gtable)
+library(gridExtra)
 
 options(shiny.fullstacktrace = TRUE)
 
@@ -16,11 +19,15 @@ rvals <- reactiveValues(
   exam = NULL,
   start = TRUE,
   plots = list(),
-  rooms = list()
+  rooms_ok = list()
 )
 
-rooms <- rjson::fromJSON(file = "rooms.json") |>
-  process_layout()
+rooms <- rjson::fromJSON(file = "rooms.json") |> process_layout()
+
+cleanup_strings <- c(
+  "Lisätietoja, kuten suositellut yksilölliset järjestelyt",
+  "Onko sinulle tehty suositus yksilöllisistä järjestelyistä tentteihin liittyen? Jos, niin kuvaile tarpeesi. Varaudu esittämään suositus tenttitilaisuudessa."
+)
 
 js_code <- "
   shinyjs.copyToClipboard = function(params) {
@@ -51,7 +58,7 @@ ui <- fluidPage(
       sidebarLayout(
         sidebarPanel(
           width = 3,
-          fileInput("file", "Select the exam .xlsx file"),
+          fileInput("file", "Select the exam .csv/.xlsx file"),
           selectInput(
             "special_groups",
             "Special groups",
@@ -67,13 +74,13 @@ ui <- fluidPage(
             tabPanel(
               "Summary",
               br(),
-              DT::dataTableOutput("exam_standard", width = "66%"),
+              DT::dataTableOutput("exam_standard", width = "75%"),
               br(),
               strong("Multiple exams"),
-              DT::dataTableOutput("exam_multi", width = "66%"),
+              DT::dataTableOutput("exam_multi", width = "75%"),
               br(),
               strong("Special arrangements"),
-              DT::dataTableOutput("exam_special", width = "66%"),
+              DT::dataTableOutput("exam_special", width = "75%"),
               br()
             ),
             tabPanel(
@@ -94,10 +101,15 @@ ui <- fluidPage(
             tabPanel(
               "Output",
               br(),
-              actionButton(
-                "clip",
-                label = "Copy student emails to clipboard",
-                icon = icon("clipboard")
+              fluidRow(
+                column(
+                  width = 3,
+                  actionButton(
+                    "clip",
+                    label = "Copy student emails to clipboard",
+                    icon = icon("clipboard")
+                  )
+                )
               )
             )
           )
@@ -132,14 +144,28 @@ server <- function(input, output) {
         insertUI(
           selector = "#clip",
           where = "afterEnd",
-          ui = downloadButton(
-            paste0(val, "_seating"),
-            paste0("Export ", nm[i], " Seating")
+          ui = hidden(
+            downloadButton(
+              paste0(val, "_seating"),
+              paste0("Export ", nm[i], " seating arrangement")
+            )
           )
         )
-        # Room list download links TODO
+        # Student list download links
+        insertUI(
+          selector = "#clip",
+          where = "afterEnd",
+          ui = hidden(
+            downloadButton(
+              paste0(val, "_students"),
+              paste0("Export ", nm[i], " list of students")
+            )
+          )
+        )
+
       })
       rvals$start <- FALSE
+      rvals$button_init <- TRUE
     }
   })
 
@@ -147,11 +173,19 @@ server <- function(input, output) {
   raw_data <- reactive({
     req(input$file)
     ext <- tools::file_ext(input$file$datapath)
-    if (ext != "xlsx") {
-      showFeedbackWarning("file", "Please upload an .xlsx file.")
-    } else {
+    if (ext %in% c("xlsx", "csv")) {
       hideFeedback("file")
-      try(readxl::read_xlsx(input$file$datapath))
+      if (ext == "xlsx") {
+        try(readxl::read_xlsx(input$file$datapath))
+      } else {
+        try({
+          data.table::fread(file = input$file$datapath) |>
+            data.table::setDT() |>
+            as_tibble()
+        })
+      }
+    } else {
+      showFeedbackWarning("file", "Please upload a .csv or an .xlsx file.")
     }
   })
 
@@ -177,7 +211,6 @@ server <- function(input, output) {
     mis <- !req_names %in% e_names
     if (any(mis)) {
       showFeedbackWarning(
-        "file",
         paste0(
           "Invalid .xlsx file, missing columns: ",
           paste0(toupper(req_names[mis]), collapse = ", ")
@@ -187,7 +220,7 @@ server <- function(input, output) {
     }
     req(valid)
     hideFeedback("file")
-    rvals$exam <- e |>
+    e <- e |>
       rename(
         id = opiskelijanumero,
         last = sukunimi,
@@ -196,7 +229,13 @@ server <- function(input, output) {
         exam = tentti,
         special = lisätietokysymykset
       ) |>
-      mutate(special = gsub("\r\n", " ", special))
+      mutate(special = gsub("\r\n", " ", special)) |>
+      mutate(special = gsub(cleanup_strings[1L], "", special, fixed = TRUE)) |>
+      mutate(special = gsub(cleanup_strings[2L], "", special, fixed = TRUE))
+    # Need to use str_order as dplyr::arrange
+    # can result in incorrect order with scandinavian letters
+    e <- e[stringr::str_order(e$last, locale = "fi_FI"), ]
+    rvals$exam <- e
     updateSelectInput(
       inputId = "special_groups",
       choices = unique(rvals$exam$special)
@@ -222,13 +261,12 @@ server <- function(input, output) {
       multi <- exam |>
         filter(!special %in% input$special_groups) |>
         filter(id %in% multi_id)
-      rvals$multi <- multi
+      #rvals$multi <- multi
 
       # Others
       exam <- exam |>
         filter(!special %in% input$special_groups) |>
-        filter(!id %in% multi_id) |>
-        arrange(last, first)
+        filter(!id %in% multi_id)
       rvals$exam_standard <- exam
 
       # Summaries
@@ -247,13 +285,13 @@ server <- function(input, output) {
         options = list(dom = "t", ordering = FALSE, pageLength = 10000)
       )
       output$exam_multi <- DT::renderDataTable(
-        multi |> select(first, last, exam),
+        multi |> select(last, first, exam),
         class = "compact",
         rownames = FALSE,
         options = list(dom = "t", ordering = FALSE, pageLength = 10000)
       )
       output$exam_special <- DT::renderDataTable(
-        special |> select(first, last, exam, special),
+        special |> select(last, first, exam, special),
         class = "compact",
         rownames = FALSE,
         options = list(dom = "t", ordering = FALSE, pageLength = 10000)
@@ -333,9 +371,11 @@ server <- function(input, output) {
         if (nm[i] %in% input$exam_rooms) {
           showTab(inputId = "nav_tabs", target = rooms[[i]]$value)
           showElement(id = paste0(rooms[[i]]$value, "_seating"))
+          showElement(id = paste0(rooms[[i]]$value, "_students"))
         } else {
           hideTab(inputId = "nav_tabs", target = rooms[[i]]$value)
           hideElement(id = paste0(rooms[[i]]$value, "_seating"))
+          hideElement(id = paste0(rooms[[i]]$value, "_students"))
         }
       }
     },
@@ -349,23 +389,36 @@ server <- function(input, output) {
     exam <- rvals$exam_standard
     if (!is.null(design)) {
       exams <- character(0L)
+      exams_orig <- character(0L)
       n <- integer(0L)
+      start <- integer(0L)
+      end <- integer(0L)
       for (i in seq_len(nrow(design))) {
-        if (any(design[i,-c(1:4)]) > 0) {
-          idx <- which(design[i, -c(1:3)] > 0)
+        if (any(design[i,-c(1L:4L)]) > 0) {
+          idx <- which(design[i, -c(1L:3L)] > 0)
           exams <- c(
             exams,
             paste0(design$exam[i], " (part ", idx, ")")
           )
-          n <- c(n, as.integer(design[i, -c(1:3)])[idx])
+          exams_orig <- c(exams_orig, rep(design$exam[i], length(idx)))
+          parts_n <- as.integer(design[i, -c(1L:3L)])[idx]
+          n <- c(n, parts_n)
+          start <- c(start, cumsum(c(1L, parts_n[-length(idx)])))
+          end <- c(end, cumsum(parts_n))
         } else {
           exams <- c(exams, design$exam[i])
+          exams_orig <- c(exams_orig, design$exam[i])
           n <- c(n, design$n[i])
+          start <- c(start, 1L)
+          end <- c(end, design$n[i])
         }
       }
       rvals$design_partition <- data.frame(
         exam = exams,
-        n = n
+        exam_orig = exams_orig,
+        n = n,
+        start = start,
+        end = end
       )
       args <- c(
         list(
@@ -397,22 +450,27 @@ server <- function(input, output) {
       })
       lapply(seq_along(rooms_input), function(i) {
         j <- rooms_input[i]
-        in_ <- paste0(rooms[[j]]$value, "_exams")
-        out_ <- paste0(rooms[[j]]$value, "_output")
+        val <- rooms[[j]]$value
+        in_ <- paste0(val, "_exams")
+        out_ <- paste0(val, "_output")
         observeEvent(input[[in_]], {
           sel <- input[[in_]]
           if (length(sel) > 0L) {
             e <- rvals$design_partition |>
               filter(exam %in% sel)
             e <- e[match(e$exam, sel), ]
-            #rvals$rooms[[j]] <- e
             room <- try(process_seating(e, rooms[[j]]), silent = TRUE)
-            assigned <- room$layout |> filter(exam != "")
             if (inherits(room, "try-error")) {
               showNotification(
                 paste0("Room ", j, " does not have enough space!")
               )
+              rvals$plots[[val]] <- NULL
+              rvals$rooms_ok[[val]] <- FALSE
+              output[[out_]] <- renderUI({
+                br()
+              })
             } else {
+              assigned <- room$layout |> filter(exam != "")
               p <- ggplot(room$layout, aes(x = x, y = y, width = 1, height = 1)) +
                 geom_tile(
                   data = assigned,
@@ -432,18 +490,25 @@ server <- function(input, output) {
                   legend.position = "bottom",
                   legend.title = element_blank()
                 )
-              rvals$plots[[rooms[[j]]$value]] <- p
+              rvals$rooms_ok[[val]] <- TRUE
+              rvals$plots[[val]] <- p
               output[[out_]] <- renderUI({
                 renderPlot(p, height = 450 + 18 * nrow(e))
               })
             }
+          } else {
+            rvals$rooms_ok[[val]] <- FALSE
+            rvals$plots[[val]] <- NULL
+            output[[out_]] <- renderUI({
+              br()
+            })
           }
         })
       })
     }
   })
 
-  # Emails to clipboard
+  # Copy email addresses to clipboard
   observeEvent(input$clip, {
     if (!is.null(rvals$exam_standard)) {
       clip_str <- paste0(unique(rvals$exam_standard$email), collapse = ",")
@@ -451,25 +516,60 @@ server <- function(input, output) {
     }
   })
 
-  # Seating download links
+  # Seating arrangement download links
   lapply(seq_along(rooms), function(i) {
     val <- rooms[[i]]$value
     output[[paste0(val, "_seating")]] <- downloadHandler(
       filename = function() {paste0(val, "_seating.pdf")},
       content = function(file) {
-        pdf(file, paper = "default")
-        plot(rvals$plots[[val]])
-        dev.off()
+        if (rvals$rooms_ok[[val]]) {
+          pdf(file, paper = "a4", width = 8.5, height = 11)
+          plot(rvals$plots[[val]])
+          dev.off()
+        }
       }
     )
   })
 
   # Student list download links
-  #lapply(seq_along(rooms), function(i) {
-  #  val <- rooms[[i]]$value
-  #  e <- rvals$rooms[[i]]
-  #  exam <- rvals$exam_standard |> filter(exam %in% e$exam)
-  #})
+  lapply(seq_along(rooms), function(i) {
+    nm <- names(rooms)
+    val <- rooms[[i]]$value
+    in_ <- paste0(val, "_exams")
+    output[[paste0(val, "_students")]] <- downloadHandler(
+      filename = function() {paste0(val, "_students.pdf")},
+      content = function(file) {
+        if (rvals$rooms_ok[[val]]) {
+          design <- rvals$design_partition
+          sel <- input[[in_]]
+          students <- rvals$exam_standard
+          parts <- vector(mode = "list", length = length(sel))
+          for (j in seq_along(sel)) {
+            if (sel[j] == "Multiple exams") {
+              parts[[j]] <- students |> filter(id %in% rvals$multi_id)
+            } else {
+              d <- design |> filter(exam == sel[j])
+              parts[[j]] <- students |>
+                filter(exam == d$exam_orig) |>
+                slice(seq.int(d$start, d$end))
+            }
+          }
+          out <- dplyr::bind_rows(parts)
+          out <- out[stringr::str_order(out$last, locale = "fi_FI"), ] |>
+            rename(
+              Sukunimi = last,
+              Etunimet = first
+            ) |>
+            mutate(
+              Läsnä = ""
+            )
+          pdf(file, paper = "a4", width = 8.5, height = 11)
+          student_list(out, main = nm[i])
+          dev.off()
+        }
+      }
+    )
+  })
 
 }
 
