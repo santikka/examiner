@@ -13,7 +13,7 @@ process_layout <- function(x) {
   x
 }
 
-process_seating <- function(e, room) {
+process_seating <- function(e, sel, room) {
   room$layout$exam <- ""
   lo <- room$layout
   row_counts <- lo |>
@@ -47,6 +47,7 @@ process_seating <- function(e, room) {
       m <- m - row_counts$n[j]
     }
   }
+  room$layout$exam <- factor(room$layout$exam, levels = sel)
   room
 }
 
