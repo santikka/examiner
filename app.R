@@ -138,6 +138,7 @@ server <- function(input, output) {
       hideTab(inputId = "nav_tabs", target = "output")
       lapply(rev(seq_along(rooms)), function(i) {
         val <- rooms[[i]]$value
+        rvals$rooms_ok[[val]] <- FALSE
         # Room tabs
         insertTab(
           inputId = "nav_tabs",
@@ -150,6 +151,7 @@ server <- function(input, output) {
           target = "design",
           position = "after"
         )
+        hideTab(inputId = "nav_tabs", target = val)
         # Seating arrangement download links
         insertUI(
           selector = "#clip_special",
@@ -175,7 +177,6 @@ server <- function(input, output) {
 
       })
       rvals$start <- FALSE
-      rvals$button_init <- TRUE
     }
   })
 
@@ -274,7 +275,6 @@ server <- function(input, output) {
       multi <- exam |>
         filter(!special %in% input$special_groups) |>
         filter(id %in% multi_id)
-      #rvals$multi <- multi
 
       # Others
       exam <- exam |>
@@ -375,25 +375,6 @@ server <- function(input, output) {
     }
   })
 
-  # Exam rooms tabs
-  observeEvent(
-    input$exam_rooms,
-    {
-      for (i in seq_along(rooms)) {
-        if (nm[i] %in% input$exam_rooms) {
-          showTab(inputId = "nav_tabs", target = rooms[[i]]$value)
-          showElement(id = paste0(rooms[[i]]$value, "_seating"))
-          showElement(id = paste0(rooms[[i]]$value, "_students"))
-        } else {
-          hideTab(inputId = "nav_tabs", target = rooms[[i]]$value)
-          hideElement(id = paste0(rooms[[i]]$value, "_seating"))
-          hideElement(id = paste0(rooms[[i]]$value, "_students"))
-        }
-      }
-    },
-    ignoreNULL = FALSE
-  )
-
   # Exam room buckets
   observe({
     design <- rvals$design
@@ -463,32 +444,6 @@ server <- function(input, output) {
     }
   })
 
-  # Copy email addresses to clipboard
-  observeEvent(input$clip_standard, {
-    if (!is.null(rvals$exam)) {
-      emails <- rvals$exam |>
-        filter(!special %in% input$special_groups) |>
-        pull(email)
-      clip_str <- paste0(unique(emails), collapse = ",")
-      js$copyToClipboard(clip_str)
-    } else {
-      js$copyToClipboard("")
-    }
-  })
-
-  # Copy email addresses to clipboard (special arrangements)
-  observeEvent(input$clip_special, {
-    if (!is.null(rvals$exam)) {
-      emails <- rvals$exam |>
-        filter(special %in% input$special_groups) |>
-        pull(email)
-      clip_str <- paste0(unique(emails), collapse = ",")
-      js$copyToClipboard(clip_str)
-    } else {
-      js$copyToClipboard("")
-    }
-  })
-
   # Exam to room allocation
   lapply(seq_along(rooms), function(i) {
     j <- nm[i]
@@ -512,6 +467,9 @@ server <- function(input, output) {
           output[[out_]] <- renderUI({
             br()
           })
+          hideTab(inputId = "nav_tabs", target = val)
+          hideElement(id = paste0(val, "_seating"))
+          hideElement(id = paste0(val, "_students"))
         } else {
           assigned <- room$layout |> filter(exam != "")
           p <- ggplot(room$layout, aes(x = x, y = y, width = 1, height = 1)) +
@@ -538,6 +496,9 @@ server <- function(input, output) {
           output[[out_]] <- renderUI({
             renderPlot(p, height = 450 + 18 * nrow(e))
           })
+          showTab(inputId = "nav_tabs", target = val)
+          showElement(id = paste0(val, "_students"))
+          showElement(id = paste0(val, "_seating"))
         }
       } else {
         rvals$rooms_ok[[val]] <- FALSE
@@ -545,8 +506,37 @@ server <- function(input, output) {
         output[[out_]] <- renderUI({
           br()
         })
+        hideTab(inputId = "nav_tabs", target = val)
+        hideElement(id = paste0(val, "_seating"))
+        hideElement(id = paste0(val, "_students"))
       }
     })
+  })
+
+  # Copy email addresses to clipboard
+  observeEvent(input$clip_standard, {
+    if (!is.null(rvals$exam)) {
+      emails <- rvals$exam |>
+        filter(!special %in% input$special_groups) |>
+        pull(email)
+      clip_str <- paste0(unique(emails), collapse = ",")
+      js$copyToClipboard(clip_str)
+    } else {
+      js$copyToClipboard("")
+    }
+  })
+
+  # Copy email addresses to clipboard (special arrangements)
+  observeEvent(input$clip_special, {
+    if (!is.null(rvals$exam)) {
+      emails <- rvals$exam |>
+        filter(special %in% input$special_groups) |>
+        pull(email)
+      clip_str <- paste0(unique(emails), collapse = ",")
+      js$copyToClipboard(clip_str)
+    } else {
+      js$copyToClipboard("")
+    }
   })
 
   # Seating arrangement download links
@@ -555,11 +545,9 @@ server <- function(input, output) {
     output[[paste0(val, "_seating")]] <- downloadHandler(
       filename = function() {paste0(val, "_seating.pdf")},
       content = function(file) {
-        if (rvals$rooms_ok[[val]]) {
-          pdf(file, paper = "a4", width = 8.5, height = 11)
-          plot(rvals$plots[[val]])
-          dev.off()
-        }
+        pdf(file, paper = "a4", width = 8.5, height = 11)
+        plot(rvals$plots[[val]])
+        dev.off()
       }
     )
   })
