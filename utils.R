@@ -13,13 +13,13 @@ process_layout <- function(x) {
   x
 }
 
-process_seating <- function(e, sel, room) {
+process_seating <- function(e, first, row, col, sel, room) {
   room$layout$exam <- ""
   lo <- room$layout
   row_counts <- lo |>
     group_by(y) |>
     summarise(
-      idx = list(x[x %% 2 == 1]),
+      idx = list(x[x %in% seq.int(first, length(x), by = col + 1L)]),
       n = lengths(idx)
     )
   nr <- nrow(row_counts)
@@ -30,7 +30,7 @@ process_seating <- function(e, sel, room) {
       stop("Room is full")
     }
     free_row <- min(rows[!reserved])
-    idx <- seq.int(free_row, nr, by = 2)
+    idx <- seq.int(free_row, nr, by = row + 1L)
     space <- cumsum(row_counts$n[idx])
     m <- e$n[i]
     fit_idx <- which(space >= m)
@@ -57,18 +57,24 @@ student_list <- function(x, main) {
     gp = gpar(fontsize = 10, fontface = "bold"),
     just = "left"
   )
-  cols <- c("Sukunimi", "Etunimet", "Läsnä")
-  y <- x %>% select(all_of(cols)) %>% distinct()
+  cols <- c("last", "first")
+  y <- x |>
+    select(all_of(cols)) |>
+    distinct() |>
+    rename(
+      Sukunimi = last,
+      Etunimet = first
+    ) |>
+    mutate(
+      Läsnä = ""
+    )
   n <- nrow(y)
-  y_list <- list()
   tables <- list()
   lim <- 60L
-  if (n > lim) {
-    y_list[[1L]] <- y |> slice(seq.int(1L, lim))
-    y_list[[2L]] <- y |> slice(seq.int(lim + 1L, n))
-  } else {
-    y_list[[1]] <- y
-  }
+  n_parts <- ceiling(n / lim)
+  y_list <- lapply(seq_len(n_parts), function(p) {
+    y |> slice(seq.int(lim * (p - 1L) + 1L, lim * p))
+  })
   for (i in seq_along(y_list)) {
     tables[[i]] <- tableGrob(
       y_list[[i]],
@@ -86,13 +92,16 @@ student_list <- function(x, main) {
       )
     )
   }
-  if (length(y_list) > 1L) {
-    grid.arrange(
-      gtable_combine(tables[[1L]], tables[[2L]], along = 1),
-      ncol = 1,
-      top = textGrob(main)
-    )
-  } else {
-    grid.arrange(tables[[1L]], ncol = 1, top = textGrob(main))
+  n_pages <- ceiling(n_parts / 2)
+  for (i in seq_len(n_pages)) {
+    if (2L * i > length(tables)) {
+      grid.arrange(tables[[2 * (i - 1) + 1]], ncol = 1, top = textGrob(main))
+    } else {
+      grid.arrange(
+        gtable_combine(tables[[2 * (i - 1) + 1]], tables[[2L * i]], along = 1),
+        ncol = 1,
+        top = textGrob(main)
+      )
+    }
   }
 }
