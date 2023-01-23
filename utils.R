@@ -13,23 +13,33 @@ process_layout <- function(x) {
   x
 }
 
-process_seating <- function(e, first, row, col, sel, room) {
+process_seating <- function(e, ilc, first, row, col, sel, room) {
   room$layout$exam <- ""
   lo <- room$layout
+  max_col <- max(lo$x)
   row_counts <- lo |>
     group_by(y) |>
     summarise(
-      idx = list(x[x %in% seq.int(first, length(x), by = col + 1L)]),
+      idx = list(x[x %in% seq.int(first, max_col, by = col + 1L)]),
       n = lengths(idx)
     )
   nr <- nrow(row_counts)
   rows <- seq_len(nr)
   reserved <- logical(nr)
+  free_row <- 0L
   for (i in seq_len(nrow(e))) {
     if (all(reserved)) {
       stop("Room is full")
     }
-    free_row <- min(rows[!reserved])
+    if (ilc) {
+      free_row <- min(rows[!reserved])
+    } else {
+      if (i > 1L) {
+        free_row <- max(rows[reserved]) + row + 1L
+      } else {
+        free_row <- 1L
+      }
+    }
     idx <- seq.int(free_row, nr, by = row + 1L)
     space <- cumsum(row_counts$n[idx])
     m <- e$n[i]

@@ -1,5 +1,9 @@
 # Requires the following packages
-# install.packages(c("data.table", "dplyr", "DT", "grid", "gtable", "gridExtra", "readxl", "shiny", "shinyjs", "shinyFeedback", "sortable", "stringr"))
+# install.packages(c(
+#   "data.table", "dplyr", "DT", "ggplot2", "grid", "gtable",
+#   "gridExtra", "readxl", "rjson", "shiny", "shinyjs", "shinyFeedback", "sortable",
+#   "stringr"
+# ))
 
 library(dplyr)
 library(shiny)
@@ -7,6 +11,7 @@ library(shinyjs)
 library(shinyFeedback)
 library(sortable)
 library(ggplot2)
+library(ggpattern)
 library(grid)
 library(gtable)
 library(gridExtra)
@@ -101,7 +106,7 @@ ui <- fluidPage(
                 choices = names(rooms),
                 multiple = TRUE
               ),
-              strong("Partition exams (columns `part 1` and `part 2` should sum to `n`)"),
+              strong("Partition exams"),
               DT::dataTableOutput("exam_controls", width = "66%"),
               br(),
               uiOutput("exam_buckets")
@@ -203,7 +208,7 @@ server <- function(input, output, session) {
                 width = 2,
                 numericInput(
                   paste0(val, "_row_dist"),
-                  "Row distance (same exam)",
+                  "Row distance",
                   value = 0L,
                   min = 0L,
                   step = 1L
@@ -218,9 +223,34 @@ server <- function(input, output, session) {
                   min = 0L,
                   step = 1L
                 )
+              ),
+              column(
+                width = 2,
+                strong("Interlaced exams"),
+                br(),
+                checkboxInput(
+                  paste0(val, "_interlace"),
+                  label = "Allow",
+                  value = TRUE
+                )
+              ),
+              column(
+                width = 2,
+                strong("Use colors"),
+                br(),
+                checkboxInput(
+                  paste0(val, "_use_colors"),
+                  label = "Use",
+                  value = FALSE
+                )
               )
             ),
-            uiOutput(paste0(val, "_output"))
+            fluidRow(
+              column(
+                width = 12,
+                uiOutput(paste0(val, "_output"))
+              )
+            )
           ),
           target = "design",
           position = "after"
@@ -393,7 +423,7 @@ server <- function(input, output, session) {
           class = "compact",
           options = list(dom = "t", ordering = FALSE),
           selection = list(mode = "single", target = "cell"),
-          editable = list(target = "cell", disable = list(columns = 0L:3L))
+          editable = list(target = "cell", disable = list(columns = 0L:4L))
         ) |> DT::formatStyle(
           "ok",
           target = "row",
@@ -405,16 +435,22 @@ server <- function(input, output, session) {
 
   # Persistent partition edits
   observeEvent(input$exam_controls_cell_edit, {
+    new <- input$exam_controls_cell_edit$value
     row <- input$exam_controls_cell_edit$row
     col <- input$exam_controls_cell_edit$col
-    rvals$design[row, col] <- input$exam_controls_cell_edit$value
-    cols <- rvals$design[, c("part 1", "part 2")]
-    rows_ok <- (rowSums(cols) == rvals$design$n) & (apply(cols, 1, min) >= 0)
-    rvals$design[rows_ok, "ok"] <- 1L
-    rvals$design[!rows_ok, "ok"] <- 0L
+    if (new < 0) {
+      new <- 0L
+    }
+    if (new >= rvals$design$n[row]) {
+      new <- rvals$design$n[row] - 1L
+    }
+    rvals$design[row, col] <- new
+    rvals$design[row, col - 1L] <- rvals$design[row, "n"] - rvals$design[row, col]
+    rvals$design$ok <- 1L
     for (i in seq_len(nrow(rvals$design))) {
-      exam <- rvals$exam_standard |> filter(exam == rvals$design$exam[i])
-      if (rvals$design[i, "ok"] == 0L || rvals$design[i, "part 2"] == 0) {
+      exam <- rvals$exam_standard |>
+        filter(exam == rvals$design$exam[i])
+      if (rvals$design$ok[i] == 0L || rvals$design$`part 2`[i] == 0) {
         next
       }
       a <- rvals$design$`part 1`[i]
@@ -435,7 +471,7 @@ server <- function(input, output, session) {
     hide_room_tabs()
     design <- rvals$design
     rooms_input <- input$exam_rooms
-    exam <- rvals$exam_standard
+    #exam <- rvals$exam_standard
     if (!is.null(design)) {
       exams <- character(0L)
       exams_orig <- character(0L)
@@ -443,16 +479,23 @@ server <- function(input, output, session) {
       start <- integer(0L)
       end <- integer(0L)
       for (i in seq_len(nrow(design))) {
-        if (any(design[i,-c(1L:4L)]) > 0) {
-          idx <- which(design[i, -c(1L:3L)] > 0)
+        if (design$`part 2`[i] > 0L) {
+          #idx <- which(design[i, -c(1L:3L)] > 0)
+          exam <- rvals$exam_standard |>
+            filter(exam == design$exam[i])
+          a <- design$`part 1`[i]
+          b <- a + 1L
+          last <- character(2L)
+          last[1L] <- paste0(" (", exam$last[1L], " - ", exam$last[a], ")")
+          last[2L] <- paste0(" (", exam$last[b], " - ", exam$last[nrow(exam)], ")")
           exams <- c(
             exams,
-            paste0(design$exam[i], " (part ", idx, ")")
+            paste0(design$exam[i], last)
           )
-          exams_orig <- c(exams_orig, rep(design$exam[i], length(idx)))
-          parts_n <- as.integer(design[i, -c(1L:3L)])[idx]
+          exams_orig <- c(exams_orig, rep(design$exam[i], 2L))
+          parts_n <- as.integer(design[i, c("part 1", "part 2")])
           n <- c(n, parts_n)
-          start <- c(start, cumsum(c(1L, parts_n[-length(idx)])))
+          start <- c(start, cumsum(c(1L, parts_n[1L])))
           end <- c(end, cumsum(parts_n))
         } else {
           exams <- c(exams, design$exam[i])
@@ -492,7 +535,7 @@ server <- function(input, output, session) {
         fluidRow(
           column(
             tags$b("Drag exams to the desired rooms"),
-            width = 12,
+            width = 12L,
             do.call("bucket_list", args = args)
           )
         )
@@ -507,16 +550,18 @@ server <- function(input, output, session) {
     out_ <- paste0(val, "_output")
     observe({
       sel <- input[[paste0(val, "_exams")]]
+      ilc <- input[[paste0(val, "_interlace")]]
       first <- input[[paste0(val, "_first_col")]]
       row <- input[[paste0(val, "_row_dist")]]
       col <- input[[paste0(val, "_col_dist")]]
+      use_colors <- input[[paste0(val, "_use_colors")]]
       if (length(sel) > 0L) {
         showTab(inputId = "nav_tabs", target = val)
         e <- isolate(rvals$design_partition) |>
           filter(exam %in% sel)
         e <- e[match(sel, e$exam), ]
         room <- try(
-          process_seating(e, first, row, col, sel, rooms[[j]]),
+          process_seating(e, ilc, first, row, col, sel, rooms[[j]]),
           silent = TRUE
         )
         if (inherits(room, "try-error")) {
@@ -535,25 +580,49 @@ server <- function(input, output, session) {
           hideElement(id = paste0(val, "_students"))
         } else {
           assigned <- room$layout |> filter(exam != "")
+          p <- NULL
           p <- ggplot(room$layout, aes(x = x, y = y, width = 1, height = 1)) +
-            geom_tile(
-              data = assigned,
-              aes(x = x, y = y, width = 1, height = 1, fill = exam)
-            ) +
-            geom_tile(fill = "transparent", color = "black") +
             coord_equal() +
-            theme_classic(base_size = 20) +
+            theme_classic(base_size = 12) +
             guides(color = "none") +
+            scale_x_continuous(breaks = seq.int(1L, max(room$layout$x))) +
+            scale_y_continuous(breaks = seq.int(1L, max(room$layout$y))) +
             theme(
-              axis.text = element_blank(),
+              axis.text.x = element_text(
+                hjust = 0.5,
+                size = 12,
+                vjust = 0.5,
+                margin = margin(-10, 0, 0, 0)
+              ),
+              axis.text.y =  element_text(
+                hjust = 0.5,
+                size = 12,
+                vjust = 0.5,
+                margin = margin(0, -15, 0, 0)
+              ),
               axis.line = element_blank(),
               axis.ticks = element_blank(),
               axis.title = element_blank(),
               panel.grid = element_blank(),
               legend.direction = "vertical",
+              legend.key.size = unit(1, "cm"),
               legend.position = "bottom",
               legend.title = element_blank()
             )
+          if (use_colors) {
+            p <- p +
+              geom_tile(
+                data = assigned,
+                aes(x = x, y = y, width = 1, height = 1, fill = exam)
+              ) +
+              geom_tile(fill = "transparent", color = "black")
+          } else {
+            p <- p +
+              geom_point(data = assigned, aes(shape = exam), color = "black", size = 4.5) +
+              scale_shape_manual(values = seq_len(nlevels(assigned$exam))) +
+              geom_tile(fill = "transparent", color = "black") +
+              guides(fill = "none")
+          }
           isolate({
             rvals$rooms_ok[[val]] <- TRUE
             rvals$plots[[val]] <- p
@@ -613,7 +682,10 @@ server <- function(input, output, session) {
       for (i in seq_along(rooms)) {
         val <- rooms[[i]]$value
         if (rvals$rooms_ok[[val]]) {
-          plot(rvals$plots[[val]])
+          plot(
+            rvals$plots[[val]] +
+              theme(plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "in"))
+          )
         }
       }
       dev.off()
