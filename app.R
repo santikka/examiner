@@ -54,8 +54,14 @@ ui <- fluidPage(
           margin: 0px;
           padding: 0px;
         }
+        .rank-list-item {
+          font-size: 12px!important;
+        }
         #special_groups {
           font-size: 10px;
+        }
+        div.red {
+          border: 1px solid #d22!important;
         }
       ")
     )
@@ -107,6 +113,7 @@ ui <- fluidPage(
                 multiple = TRUE
               ),
               strong("Partition exams"),
+              span("(edit part 2 column to split the exam)"),
               DT::dataTableOutput("exam_controls", width = "66%"),
               br(),
               uiOutput("exam_buckets")
@@ -289,7 +296,7 @@ server <- function(input, output, session) {
     hide_tabs()
     valid <- TRUE
     if (inherits(raw_data(), "try-error")) {
-      showFeedbackWarning("file", "Unable to parse the input file.")
+      showFeedbackDanger("file", "Unable to parse the input file.")
       valid <- FALSE
     }
     req(valid)
@@ -307,7 +314,7 @@ server <- function(input, output, session) {
     )
     mis <- !req_names %in% e_names
     if (any(mis)) {
-      showFeedbackWarning(
+      showFeedbackDanger(
         "file",
         paste0(
           "Invalid .xlsx file, missing columns: ",
@@ -421,9 +428,10 @@ server <- function(input, output, session) {
         DT::datatable(
           rvals$design,
           class = "compact",
+          rownames = FALSE,
           options = list(dom = "t", ordering = FALSE),
           selection = list(mode = "single", target = "cell"),
-          editable = list(target = "cell", disable = list(columns = 0L:4L))
+          editable = list(target = "cell", disable = list(columns = 0L:3L))
         ) |> DT::formatStyle(
           "ok",
           target = "row",
@@ -437,7 +445,7 @@ server <- function(input, output, session) {
   observeEvent(input$exam_controls_cell_edit, {
     new <- input$exam_controls_cell_edit$value
     row <- input$exam_controls_cell_edit$row
-    col <- input$exam_controls_cell_edit$col
+    col <- input$exam_controls_cell_edit$col + 1L
     if (new < 0) {
       new <- 0L
     }
@@ -456,11 +464,13 @@ server <- function(input, output, session) {
       a <- rvals$design$`part 1`[i]
       b <- a + 1
       if (identical(exam$last[a], exam$last[b])) {
+        rvals$design[row, "ok"] <- 0L
         showNotification(
           paste0(
             "Family name conflict for exam: ",
             rvals$design$exam[i]
-          )
+          ),
+          type = "warning"
         )
       }
     }
@@ -524,22 +534,28 @@ server <- function(input, output, session) {
           add_rank_list(
             text = rooms_input[i],
             labels = NULL,
-            input_id = paste0(rooms[[rooms_input[i]]]$value, "_exams")
+            input_id = paste0(rooms[[rooms_input[i]]]$value, "_exams"),
+            css_id = paste0(rooms[[rooms_input[i]]]$value, "_rank_list")
           )
         })
       )
       args$header <- ""
       args$group_name = "bucket_list_group"
       args$orientation = "horizontal"
-      output$exam_buckets <- renderUI({
-        fluidRow(
-          column(
-            tags$b("Drag exams to the desired rooms"),
-            width = 12L,
-            do.call("bucket_list", args = args)
+      n_rooms <- length(rooms_input)
+      if (n_rooms > 0) {
+        output$exam_buckets <- renderUI({
+          fluidRow(
+            column(
+              tags$b("Drag exams to the desired rooms"),
+              width = min(12L, (n_rooms + 1L) * 3L),
+              do.call("bucket_list", args = args)
+            )
           )
-        )
-      })
+        })
+      } else {
+        output$exam_buckets <- renderUI(br())
+      }
     }
   })
 
@@ -565,6 +581,9 @@ server <- function(input, output, session) {
           silent = TRUE
         )
         if (inherits(room, "try-error")) {
+          # Add red border to rank_list container when out of space
+          jss_str <- paste0("$('#", val, "_rank_list').parent().addClass('red')")
+          runjs(jss_str)
           showNotification(
             paste0("Room ", j, " does not have enough space!"),
             type = "error"
@@ -580,7 +599,6 @@ server <- function(input, output, session) {
           hideElement(id = paste0(val, "_students"))
         } else {
           assigned <- room$layout |> filter(exam != "")
-          p <- NULL
           p <- ggplot(room$layout, aes(x = x, y = y, width = 1, height = 1)) +
             coord_equal() +
             theme_classic(base_size = 12) +
@@ -632,6 +650,8 @@ server <- function(input, output, session) {
           })
           showElement(id = paste0(val, "_students"))
           showElement(id = paste0(val, "_seating"))
+          jss_str <- paste0("$('#", val, "_rank_list').parent().removeClass('red')")
+          runjs(jss_str)
         }
       } else {
         isolate({
@@ -644,6 +664,8 @@ server <- function(input, output, session) {
         hideTab(inputId = "nav_tabs", target = val)
         hideElement(id = paste0(val, "_seating"))
         hideElement(id = paste0(val, "_students"))
+        jss_str <- paste0("$('#", val, "_rank_list').parent().removeClass('red')")
+        runjs(jss_str)
       }
     })
   })
