@@ -675,7 +675,7 @@ server <- function(input, output, session) {
       emails <- rvals$exam |>
         filter(!special %in% input$special_groups) |>
         pull(email)
-      clip_str <- paste0(unique(emails), collapse = ",")
+      clip_str <- paste0(unique(emails), collapse = ";")
       js$copyToClipboard(clip_str)
     } else {
       js$copyToClipboard("")
@@ -688,7 +688,7 @@ server <- function(input, output, session) {
       emails <- rvals$exam |>
         filter(special %in% input$special_groups) |>
         pull(email)
-      clip_str <- paste0(unique(emails), collapse = ",")
+      clip_str <- paste0(unique(emails), collapse = ";")
       js$copyToClipboard(clip_str)
     } else {
       js$copyToClipboard("")
