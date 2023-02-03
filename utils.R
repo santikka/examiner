@@ -1,3 +1,14 @@
+extract_date <- function(x) {
+  date_pattern <- "[^0-9]*([1-3]{0,1}[0-9]{1}\\.[1]{0,1}[1-9]{1}\\.).*"
+  m <- regexec(date_pattern, x)
+  date <- try({regmatches(x, m)[[1L]][2L]}, silent = TRUE)
+  if (inherits(date, "try-error")) {
+    ""
+  } else {
+    date
+  }
+}
+
 process_layout <- function(x) {
   for (i in seq_along(x)) {
     l <- x[[i]]$layout

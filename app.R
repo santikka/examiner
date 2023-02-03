@@ -78,7 +78,7 @@ ui <- fluidPage(
           fileInput("file", "Select the exam .csv/.xlsx file"),
           selectInput(
             "special_groups",
-            "Special groups",
+            "Select which answers constitute as special arrangements",
             choices = c(),
             multiple = TRUE
           )
@@ -121,32 +121,42 @@ ui <- fluidPage(
               "Output",
               value = "output",
               br(),
-              fluidRow(
-                column(
-                  width = 3,
-                  actionButton(
-                    "clip_standard",
-                    label = "Email addresses",
-                    icon = icon("clipboard")
-                  ),
-                  actionButton(
-                    "clip_special",
-                    label = "Email addresses (special arrangements)",
-                    icon = icon("clipboard")
-                  ),
-                  downloadButton(
-                    "seating",
-                    "Export seating arrangements"
-                  ),
-                  downloadButton(
-                    "students_rooms",
-                    "Export student lists by room"
-                  ),
-                  downloadButton(
-                    "students_exams",
-                    "Export student lists by exam"
-                  )
-                )
+              actionButton(
+                "clip_standard",
+                label = "Email addresses",
+                icon = icon("clipboard")
+              ),
+              br(),
+              actionButton(
+                "clip_special",
+                label = "Email addresses (special arrangements)",
+                icon = icon("clipboard")
+              ),
+              br(),
+              downloadButton(
+                "seating",
+                "Export seating arrangements"
+              ),
+              br(),
+              downloadButton(
+                "students_rooms",
+                "Export student lists by room"
+              ),
+              br(),
+              downloadButton(
+                "students_exams",
+                "Export student lists by exam"
+              ),
+              br(),
+              br(),
+              textInput(
+                "exam_list_title",
+                label = "Title for list of exams",
+                value = ""
+              ),
+              downloadButton(
+                "exam_list",
+                "Export a list of exams by room"
               )
             )
           )
@@ -276,6 +286,13 @@ server <- function(input, output, session) {
       if (ext == "xlsx") {
         try(readxl::read_xlsx(input$file$datapath), silent = TRUE)
       } else {
+        updateTextInput(
+          inputId = "exam_list_title",
+          value = paste0(
+            "Matematiikan ja tilastotieteen tentti ",
+            extract_date(basename(input$file$name))
+          )
+        )
         try(
           read.delim(
             input$file$datapath,
@@ -764,6 +781,63 @@ server <- function(input, output, session) {
     }
   )
 
+  # List of exams by room
+  output$exam_list <- downloadHandler(
+    filename = "exam_list.pdf",
+    content = function(file) {
+      rooms_exams <- vector(mode = "list", length = length(rooms))
+      pdf(file, paper = "a4r", width = 11, height = 8.5)
+      grid.text(
+        input$exam_list_title,
+        x = 0.08,
+        y = 0.90,
+        just = "left",
+        gp = gpar(fontsize = 24, fontface = "bold")
+      )
+      for (i in seq_along(rooms)) {
+        val <- rooms[[i]]$value
+        rooms_exams[[i]] <- gsub(
+          pattern = "Multiple exams",
+          replacement = "Kahden tai useamman tentin tekijät",
+          x = input[[paste0(val, "_exams")]],
+          fixed = TRUE
+        )
+      }
+      assigned <- which(lengths(rooms_exams) > 0L)
+      if (length(assigned) == 1L) {
+        grid.text(
+          paste0("Kaikki tentit salissa ", nm[assigned]),
+          x = 0.08,
+          y = 0.80,
+          just = "left",
+          gp = gpar(fontsize = 18)
+        )
+      } else {
+        y <- 0.85
+        for (i in assigned) {
+          y <- y - 0.06
+          grid.text(
+            nm[i],
+            x = 0.08,
+            y = y,
+            just = "left",
+            gp = gpar(fontsize = 20, fontface = "bold")
+          )
+          for (exam in rooms_exams[[i]]) {
+            y <- y - 0.045
+            grid.text(
+              exam,
+              x = 0.08,
+              y = y,
+              just = "left",
+              gp = gpar(fontsize = 16)
+            )
+          }
+        }
+      }
+      dev.off()
+    }
+  )
 }
 
 shinyApp(ui = ui, server = server)
