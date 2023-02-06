@@ -92,13 +92,13 @@ ui <- fluidPage(
               "Summary",
               value = "summary",
               br(),
-              DT::dataTableOutput("exam_standard", width = "75%"),
+              DT::dataTableOutput("exam_standard", width = "500px"),
               br(),
               strong("Multiple exams"),
-              DT::dataTableOutput("exam_multi", width = "75%"),
+              DT::dataTableOutput("exam_multi", width = "66%"),
               br(),
               strong("Special arrangements"),
-              DT::dataTableOutput("exam_special", width = "75%"),
+              DT::dataTableOutput("exam_special", width = "66%"),
               br()
             ),
             tabPanel(
@@ -153,6 +153,11 @@ ui <- fluidPage(
                 "exam_list_title",
                 label = "Title for list of exams",
                 value = ""
+              ),
+              checkboxInput(
+                "exam_list_landscape",
+                label = "Landscape layout",
+                value = TRUE
               ),
               downloadButton(
                 "exam_list",
@@ -479,7 +484,9 @@ server <- function(input, output, session) {
       }
       a <- rvals$design$`part 1`[i]
       b <- a + 1
-      if (identical(exam$last[a], exam$last[b])) {
+      sub_last_a <- substr(exam$last[a], 1L, 3L)
+      sub_last_b <- substr(exam$last[b], 1L, 3L)
+      if (identical(sub_last_a, sub_last_b)) {
         rvals$design[row, "ok"] <- 0L
         showNotification(
           paste0(
@@ -506,14 +513,25 @@ server <- function(input, output, session) {
       end <- integer(0L)
       for (i in seq_len(nrow(design))) {
         if (design$`part 2`[i] > 0L) {
-          #idx <- which(design[i, -c(1L:3L)] > 0)
           exam <- rvals$exam_standard |>
             filter(exam == design$exam[i])
           a <- design$`part 1`[i]
           b <- a + 1L
           last <- character(2L)
-          last[1L] <- paste0(" (", exam$last[1L], " - ", exam$last[a], ")")
-          last[2L] <- paste0(" (", exam$last[b], " - ", exam$last[nrow(exam)], ")")
+          last[1L] <- paste0(
+            " (",
+            substr(exam$last[1L], 1L, 3L),
+            " - ",
+            substr(exam$last[a], 1L, 3L),
+            ")"
+          )
+          last[2L] <- paste0(
+            " (",
+            substr(exam$last[b], 1L, 3L),
+            " - ",
+            substr(exam$last[nrow(exam)], 1L, 3L),
+            ")"
+          )
           exams <- c(
             exams,
             paste0(design$exam[i], last)
@@ -786,7 +804,11 @@ server <- function(input, output, session) {
     filename = "exam_list.pdf",
     content = function(file) {
       rooms_exams <- vector(mode = "list", length = length(rooms))
-      pdf(file, paper = "a4r", width = 11, height = 8.5)
+      if (input$exam_list_landscape) {
+        pdf(file, paper = "a4r", width = 11, height = 8.5)
+      } else {
+        pdf(file, paper = "a4", width = 8.5, height = 11)
+      }
       grid.text(
         input$exam_list_title,
         x = 0.08,
