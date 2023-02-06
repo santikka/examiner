@@ -88,7 +88,7 @@ student_list <- function(x, main) {
       Etunimet = first
     ) |>
     mutate(
-      Läsnä = ""
+      L. = ""
     )
   n <- nrow(y)
   tables <- list()
@@ -102,11 +102,11 @@ student_list <- function(x, main) {
       y_list[[i]],
       rows = NULL,
       theme = ttheme_minimal(
-        base_size = 9,
+        base_size = 8,
         padding = unit(c(2, 2), "mm"),
         core = list(
           bg_params = list(fill = "white", col = "black"),
-          fg_params = list(hjust = 0, x = 0.05)
+          fg_params = list(hjust = 0, x = 0.03)
         ),
         rowhead = list(
           fg_params = list(fontface = "plain", hjust = 0, x = 0)
@@ -115,14 +115,20 @@ student_list <- function(x, main) {
     )
   }
   n_pages <- ceiling(n_parts / 2)
+  maingrob <- textGrob(
+    main,
+    x = 0.5,
+    y = -0.25,
+    gp = gpar(fontsize = 14, fontface = "bold")
+  )
   for (i in seq_len(n_pages)) {
     if (2L * i > length(tables)) {
-      grid.arrange(tables[[2 * (i - 1) + 1]], ncol = 1, top = textGrob(main))
+      grid.arrange(tables[[2L * (i - 1L) + 1L]], ncol = 1L, top = maingrob)
     } else {
       grid.arrange(
-        gtable_combine(tables[[2 * (i - 1) + 1]], tables[[2L * i]], along = 1),
-        ncol = 1,
-        top = textGrob(main)
+        gtable_combine(tables[[2L * (i - 1L) + 1L]], tables[[2L * i]], along = 1L),
+        ncol = 1L,
+        top = maingrob
       )
     }
   }

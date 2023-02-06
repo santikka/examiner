@@ -289,7 +289,7 @@ server <- function(input, output, session) {
     if (ext %in% c("xlsx", "csv")) {
       hideFeedback("file")
       if (ext == "xlsx") {
-        try(readxl::read_xlsx(input$file$datapath, col_types = "character"), silent = TRUE)
+        try(readxl::read_xlsx(input$file$datapath), silent = TRUE)
       } else {
         updateTextInput(
           inputId = "exam_list_title",
@@ -300,9 +300,9 @@ server <- function(input, output, session) {
         )
         try(
           read.delim(
-            input$file$datapath,
-            skipNul = TRUE,
-            fileEncoding = "UTF-16LE"
+              input$file$datapath,
+              skipNul = TRUE,
+              fileEncoding = "UTF-16LE"
           ),
           silent = TRUE
         )
@@ -358,7 +358,8 @@ server <- function(input, output, session) {
       ) |>
       mutate(special = gsub("\r\n", " ", special)) |>
       mutate(special = gsub(cleanup_strings[1L], "", special, fixed = TRUE)) |>
-      mutate(special = gsub(cleanup_strings[2L], "", special, fixed = TRUE))
+      mutate(special = gsub(cleanup_strings[2L], "", special, fixed = TRUE)) |>
+      mutate(id = as.character(id))
     # Need to use str_order as dplyr::arrange
     # can result in incorrect order with scandinavian letters
     e <- e[stringr::str_order(e$last, locale = "fi_FI"), ]
