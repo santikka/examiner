@@ -78,11 +78,12 @@ student_list <- function(x, main) {
     gp = gpar(fontsize = 10, fontface = "bold"),
     just = "left"
   )
-  cols <- c("last", "first")
+  cols <- c("id", "last", "first")
   y <- x |>
     select(all_of(cols)) |>
     distinct() |>
     rename(
+      `Op. nro.` = id,
       Sukunimi = last,
       Etunimet = first
     ) |>
@@ -102,7 +103,7 @@ student_list <- function(x, main) {
       rows = NULL,
       theme = ttheme_minimal(
         base_size = 9,
-        padding = unit(c(3, 2), "mm"),
+        padding = unit(c(2, 2), "mm"),
         core = list(
           bg_params = list(fill = "white", col = "black"),
           fg_params = list(hjust = 0, x = 0.05)

@@ -289,7 +289,7 @@ server <- function(input, output, session) {
     if (ext %in% c("xlsx", "csv")) {
       hideFeedback("file")
       if (ext == "xlsx") {
-        try(readxl::read_xlsx(input$file$datapath), silent = TRUE)
+        try(readxl::read_xlsx(input$file$datapath, col_types = "character"), silent = TRUE)
       } else {
         updateTextInput(
           inputId = "exam_list_title",
