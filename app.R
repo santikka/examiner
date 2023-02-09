@@ -21,6 +21,36 @@ source("utils.R")
 
 rooms <- rjson::fromJSON(file = "rooms.json") |> process_layout()
 nm <- names(rooms)
+rooms_plot_basis <- lapply(rooms, function(room) {
+  ggplot(room$layout, aes(x = x, y = y, width = 1, height = 1)) +
+    coord_equal() +
+    theme_classic(base_size = 12) +
+    guides(color = "none") +
+    scale_x_continuous(breaks = seq.int(1L, max(room$layout$x))) +
+    scale_y_continuous(breaks = seq.int(1L, max(room$layout$y))) +
+    theme(
+      axis.text.x = element_text(
+        hjust = 0.5,
+        size = 12,
+        vjust = 0.5,
+        margin = margin(-10, 0, 0, 0)
+      ),
+      axis.text.y =  element_text(
+        hjust = 0.5,
+        size = 12,
+        vjust = 0.5,
+        margin = margin(0, -15, 0, 0)
+      ),
+      axis.line = element_blank(),
+      axis.ticks = element_blank(),
+      axis.title = element_blank(),
+      panel.grid = element_blank(),
+      legend.direction = "vertical",
+      legend.key.size = unit(1, "cm"),
+      legend.position = "bottom",
+      legend.title = element_blank()
+    )
+})
 
 cleanup_strings <- c(
   "Lisätietoja, kuten suositellut yksilölliset järjestelyt",
@@ -634,34 +664,7 @@ server <- function(input, output, session) {
           hideElement(id = paste0(val, "_students"))
         } else {
           assigned <- room$layout |> filter(exam != "")
-          p <- ggplot(room$layout, aes(x = x, y = y, width = 1, height = 1)) +
-            coord_equal() +
-            theme_classic(base_size = 12) +
-            guides(color = "none") +
-            scale_x_continuous(breaks = seq.int(1L, max(room$layout$x))) +
-            scale_y_continuous(breaks = seq.int(1L, max(room$layout$y))) +
-            theme(
-              axis.text.x = element_text(
-                hjust = 0.5,
-                size = 12,
-                vjust = 0.5,
-                margin = margin(-10, 0, 0, 0)
-              ),
-              axis.text.y =  element_text(
-                hjust = 0.5,
-                size = 12,
-                vjust = 0.5,
-                margin = margin(0, -15, 0, 0)
-              ),
-              axis.line = element_blank(),
-              axis.ticks = element_blank(),
-              axis.title = element_blank(),
-              panel.grid = element_blank(),
-              legend.direction = "vertical",
-              legend.key.size = unit(1, "cm"),
-              legend.position = "bottom",
-              legend.title = element_blank()
-            )
+          p <- rooms_plot_basis[[i]]
           if (use_colors) {
             p <- p +
               geom_tile(
