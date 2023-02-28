@@ -24,7 +24,7 @@ process_layout <- function(x) {
   x
 }
 
-process_seating <- function(e, ilc, first, row, col, sel, room) {
+process_seating <- function(e, ilc, cont, first, row, col, sel, room) {
   room$layout$exam <- ""
   lo <- room$layout
   max_col <- max(lo$x)
@@ -58,14 +58,23 @@ process_seating <- function(e, ilc, first, row, col, sel, room) {
     if (length(fit_idx) == 0) {
       stop("Not enough space for exam", e$exam)
     }
-    last <- idx[fit_idx[1L]]
-    idx_used <- idx[seq_len(which(idx == last))]
-    reserved[idx_used] <- TRUE
+    idx_last <- idx[fit_idx[1L]]
+    idx_used <- idx[seq_len(which(idx == idx_last))]
     for (j in idx_used) {
-      fill_x <- row_counts$idx[[j]]
-      fill_x <- fill_x[seq_len(min(m, length(fill_x)))]
+      row_idx <- row_counts$idx[[j]]
+      row_offset <- length(row_idx) - row_counts$n[j]
+      fill_x <- row_idx[row_offset + seq_len(min(m, row_counts$n[j]))]
+      fill_n <- length(fill_x)
       room$layout[lo$x %in% fill_x & lo$y == j, "exam"] <- e$exam[i]
-      m <- m - row_counts$n[j]
+      m <- m - fill_n
+      if (cont) {
+        row_counts$n[j] <- row_counts$n[j] - fill_n
+      } else {
+        row_counts$n[j] <- 0L
+      }
+      if (row_counts$n[j] == 0L) {
+        reserved[j] <- TRUE
+      }
     }
   }
   room$layout$exam <- factor(room$layout$exam, levels = sel)

@@ -287,6 +287,16 @@ server <- function(input, output, session) {
               ),
               column(
                 width = 2,
+                strong("Continue rows"),
+                br(),
+                checkboxInput(
+                  paste0(val, "_continue"),
+                  label = "Continue",
+                  value = FALSE
+                )
+              ),
+              column(
+                width = 2,
                 strong("Use colors"),
                 br(),
                 checkboxInput(
@@ -412,7 +422,7 @@ server <- function(input, output, session) {
       multi_id <- exam |>
         filter(!special %in% input$special_groups) |>
         select(id) |>
-        summarise(id = id, dupe = duplicated(id)) |>
+        reframe(id = id, dupe = duplicated(id)) |>
         filter(dupe == TRUE) |>
         pull(id)
       rvals$multi_id <- multi_id
@@ -632,6 +642,7 @@ server <- function(input, output, session) {
     observe({
       sel <- input[[paste0(val, "_exams")]]
       ilc <- input[[paste0(val, "_interlace")]]
+      cont <- input[[paste0(val, "_continue")]]
       first <- input[[paste0(val, "_first_col")]]
       row <- input[[paste0(val, "_row_dist")]]
       col <- input[[paste0(val, "_col_dist")]]
@@ -642,7 +653,7 @@ server <- function(input, output, session) {
           filter(exam %in% sel)
         e <- e[match(sel, e$exam), ]
         room <- try(
-          process_seating(e, ilc, first, row, col, sel, rooms[[j]]),
+          process_seating(e, ilc, cont, first, row, col, sel, rooms[[j]]),
           silent = TRUE
         )
         if (inherits(room, "try-error")) {
