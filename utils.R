@@ -45,7 +45,7 @@ process_seating <- function(e, ilc, cont, first, row, col, sel, room) {
     if (ilc) {
       free_row <- min(rows[!reserved])
     } else {
-      if (i > 1L) {
+      if (any(reserved)) {
         free_row <- max(rows[reserved]) + row + 1L
       } else {
         free_row <- 1L
