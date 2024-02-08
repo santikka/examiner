@@ -1,19 +1,19 @@
 # Requires the following packages
 # install.packages(c(
-#   "data.table", "dplyr", "DT", "ggplot2", "grid", "gtable",
-#   "gridExtra", "readxl", "rjson", "shiny", "shinyjs", "shinyFeedback", "sortable",
-#   "stringr"
+#  "data.table", "dplyr", "DT", "ggplot2", "grid", "gtable",
+#  "gridExtra", "readxl", "rjson", "shiny", "shinyjs", "shinyFeedback",
+#  "sortable", "stringr"
 # ))
 
-library(dplyr)
-library(shiny)
-library(shinyjs)
-library(shinyFeedback)
-library(sortable)
-library(ggplot2)
-library(grid)
-library(gtable)
-library(gridExtra)
+library("dplyr")
+library("shiny")
+library("shinyjs")
+library("shinyFeedback")
+library("sortable")
+library("ggplot2")
+library("grid")
+library("gtable")
+library("gridExtra")
 
 options(shiny.fullstacktrace = TRUE)
 
