@@ -142,7 +142,7 @@ ui <- fluidPage(
                 multiple = TRUE
               ),
               strong("Partition exams"),
-              span("(edit part 2 column to split the exam)"),
+              span("(edit the Part 2 column to split the exam)"),
               DT::dataTableOutput("exam_controls", width = "66%"),
               br(),
               uiOutput("exam_buckets")
@@ -181,7 +181,7 @@ ui <- fluidPage(
               br(),
               textInput(
                 "exam_list_title",
-                label = "Title for list of exams",
+                label = "Title for the list of exams",
                 value = ""
               ),
               checkboxInput(
@@ -302,7 +302,7 @@ server <- function(input, output, session) {
                 checkboxInput(
                   paste0(val, "_use_colors"),
                   label = "Use",
-                  value = FALSE
+                  value = TRUE
                 )
               )
             ),
@@ -446,22 +446,47 @@ server <- function(input, output, session) {
           data.frame(exam = "Multiple exams", n = length(unique(multi$id))),
           data.frame(exam = "Special arrangements", n = length(unique(special$id))),
           data.frame(exam = "Total", n = n_distinct(rvals$exam$id))
-        ),
-        class = "compact",
+        ) |>
+          rename(`Exam` = exam, `Number of students` = n),
+        class = "compact cell-border",
         rownames = FALSE,
-        options = list(dom = "t", ordering = FALSE, pageLength = 10000)
+        options = list(dom = "t", ordering = FALSE, pageLength = 10000, autoWidth = TRUE)
       )
       output$exam_multi <- DT::renderDataTable(
-        multi |> select(last, first, exam),
-        class = "compact",
+        multi |>
+          select(last, first, exam) |>
+          rename(`Last name` = last, `First name` = first, `Exams` = exam),
+        class = "compact cell-border",
         rownames = FALSE,
-        options = list(dom = "t", ordering = FALSE, pageLength = 10000)
+        options = list(
+          dom = "t",
+          ordering = FALSE,
+          pageLength = 10000,
+          autoWidth = TRUE
+        )
       )
       output$exam_special <- DT::renderDataTable(
-        special |> select(last, first, exam, special),
-        class = "compact",
+        special |>
+          select(last, first, exam, special) |>
+          rename(
+            `Last name` = last,
+            `First name` = first,
+            `Exam` = exam,
+            `Special arrangements` = special
+          ),
+        class = "compact cell-border",
         rownames = FALSE,
-        options = list(dom = "t", ordering = FALSE, pageLength = 10000)
+        plugins = "ellipsis",
+        options = list(
+          dom = "t",
+          ordering = FALSE,
+          pageLength = 10000,
+          autoWidth = TRUE,
+          columnDefs = list(list(
+            targets = 3,
+            render = DT::JS("$.fn.dataTable.render.ellipsis(25, false)")
+          ))
+        )
       )
     }
   })
@@ -482,20 +507,26 @@ server <- function(input, output, session) {
         ) |>
         mutate(
           ok = 1L,
-          `part 1` = n,
-          `part 2` = 0L
+          part1 = n,
+          part2 = 0L
         ) |>
         relocate(ok, .after = exam)
       output$exam_controls <- DT::renderDT(
         DT::datatable(
-          rvals$design,
-          class = "compact",
+          rvals$design |> rename(
+            `Exam` = exam,
+            `OK` = ok,
+            `Total students` = n,
+            `Part 1` = part1,
+            `Part 2` = part2
+          ),
+          class = "compact cell-border",
           rownames = FALSE,
           options = list(dom = "t", ordering = FALSE),
           selection = list(mode = "single", target = "cell"),
           editable = list(target = "cell", disable = list(columns = 0L:3L))
         ) |> DT::formatStyle(
-          "ok",
+          "OK",
           target = "row",
           backgroundColor = DT::styleEqual(c(0, 1), c("orange", "white"))
         )
@@ -520,10 +551,10 @@ server <- function(input, output, session) {
     for (i in seq_len(nrow(rvals$design))) {
       exam <- rvals$exam_standard |>
         filter(exam == rvals$design$exam[i])
-      if (rvals$design$ok[i] == 0L || rvals$design$`part 2`[i] == 0) {
+      if (rvals$design$ok[i] == 0L || rvals$design$part2[i] == 0) {
         next
       }
-      a <- rvals$design$`part 1`[i]
+      a <- rvals$design$part1[i]
       b <- a + 1
       sub_last_a <- substr(exam$last[a], 1L, 3L)
       sub_last_b <- substr(exam$last[b], 1L, 3L)
@@ -553,10 +584,10 @@ server <- function(input, output, session) {
       start <- integer(0L)
       end <- integer(0L)
       for (i in seq_len(nrow(design))) {
-        if (design$`part 2`[i] > 0L) {
+        if (design$part2[i] > 0L) {
           exam <- rvals$exam_standard |>
             filter(exam == design$exam[i])
-          a <- design$`part 1`[i]
+          a <- design$part1[i]
           b <- a + 1L
           last <- character(2L)
           last[1L] <- paste0(

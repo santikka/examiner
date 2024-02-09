@@ -12,8 +12,15 @@ extract_date <- function(x) {
 process_layout <- function(x) {
   for (i in seq_along(x)) {
     l <- x[[i]]$layout
-    o <- x[[i]]$offset
     nc <- length(l)
+    if (is.null(x[[i]]$offset)) {
+      o <- rep(0, nc)
+    } else {
+      o <- x[[i]]$offset
+      if (length(o) == 1L) {
+        o <- rep(o, nc)
+      }
+    }
     cols <- vector(mode = "list", length = nc)
     for (j in seq_len(nc)) {
       cols[[j]] <- data.frame(x = j, y = o[[j]] + seq_len(l[[j]]))
