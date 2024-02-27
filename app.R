@@ -476,16 +476,11 @@ server <- function(input, output, session) {
           ),
         class = "compact cell-border",
         rownames = FALSE,
-        plugins = "ellipsis",
         options = list(
           dom = "t",
           ordering = FALSE,
           pageLength = 10000,
-          autoWidth = TRUE,
-          columnDefs = list(list(
-            targets = 3,
-            render = DT::JS("$.fn.dataTable.render.ellipsis(25, false)")
-          ))
+          autoWidth = TRUE
         )
       )
     }
