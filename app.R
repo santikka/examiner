@@ -604,7 +604,7 @@ server <- function(input, output, session) {
             paste0(design$exam[i], last)
           )
           exams_orig <- c(exams_orig, rep(design$exam[i], 2L))
-          parts_n <- as.integer(design[i, c("part 1", "part 2")])
+          parts_n <- as.integer(design[i, c("part1", "part2")])
           n <- c(n, parts_n)
           start <- c(start, cumsum(c(1L, parts_n[1L])))
           end <- c(end, cumsum(parts_n))
