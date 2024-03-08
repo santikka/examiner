@@ -247,11 +247,20 @@ server <- function(input, output, session) {
               column(
                 width = 2,
                 numericInput(
+                  paste0(val, "_first_row"),
+                  "Starting row",
+                  value = 1L,
+                  min = 1L,
+                  step = 1L
+                )
+              ),
+              column(
+                width = 2,
+                numericInput(
                   paste0(val, "_first_col"),
                   "Starting column",
                   value = 1L,
                   min = 1L,
-                  max = 2L,
                   step = 1L
                 )
               ),
@@ -274,6 +283,18 @@ server <- function(input, output, session) {
                   min = 0L,
                   step = 1L
                 )
+              )
+            ),
+            fluidRow(
+              column(
+                width = 2,
+                strong("Fill by row"),
+                br(),
+                checkboxInput(
+                  paste0(val, "_byrow"),
+                  label = "Yes",
+                  value = TRUE
+                )
               ),
               column(
                 width = 2,
@@ -287,7 +308,7 @@ server <- function(input, output, session) {
               ),
               column(
                 width = 2,
-                strong("Continue rows"),
+                strong("Continue filling"),
                 br(),
                 checkboxInput(
                   paste0(val, "_continue"),
@@ -308,7 +329,7 @@ server <- function(input, output, session) {
             ),
             fluidRow(
               column(
-                width = 12,
+                width = 8,
                 uiOutput(paste0(val, "_output"))
               )
             )
@@ -443,14 +464,28 @@ server <- function(input, output, session) {
             group_by(exam) |>
             count() |>
             arrange(desc(n)),
-          data.frame(exam = "Multiple exams", n = length(unique(multi$id))),
-          data.frame(exam = "Special arrangements", n = length(unique(special$id))),
-          data.frame(exam = "Total", n = n_distinct(rvals$exam$id))
+          data.frame(
+            exam = "Multiple exams", 
+            n = length(unique(multi$id))
+          ),
+          data.frame(
+            exam = "Special arrangements", 
+            n = length(unique(special$id))
+          ),
+          data.frame(
+            exam = "Total", 
+            n = n_distinct(rvals$exam$id)
+          )
         ) |>
           rename(`Exam` = exam, `Number of students` = n),
         class = "compact cell-border",
         rownames = FALSE,
-        options = list(dom = "t", ordering = FALSE, pageLength = 10000, autoWidth = TRUE)
+        options = list(
+          dom = "t", 
+          ordering = FALSE,
+          pageLength = 10000,
+          autoWidth = TRUE
+        )
       )
       output$exam_multi <- DT::renderDataTable(
         multi |>
@@ -571,7 +606,6 @@ server <- function(input, output, session) {
     hide_room_tabs()
     design <- rvals$design
     rooms_input <- input$exam_rooms
-    #exam <- rvals$exam_standard
     if (!is.null(design)) {
       exams <- character(0L)
       exams_orig <- character(0L)
@@ -669,9 +703,11 @@ server <- function(input, output, session) {
       sel <- input[[paste0(val, "_exams")]]
       ilc <- input[[paste0(val, "_interlace")]]
       cont <- input[[paste0(val, "_continue")]]
-      first <- input[[paste0(val, "_first_col")]]
+      first_row <- input[[paste0(val, "_first_row")]]
+      first_col <- input[[paste0(val, "_first_col")]]
       row <- input[[paste0(val, "_row_dist")]]
       col <- input[[paste0(val, "_col_dist")]]
+      byrow <- input[[paste0(val, "_byrow")]]
       use_colors <- input[[paste0(val, "_use_colors")]]
       if (length(sel) > 0L) {
         showTab(inputId = "nav_tabs", target = val)
@@ -679,7 +715,7 @@ server <- function(input, output, session) {
           filter(exam %in% sel)
         e <- e[match(sel, e$exam), ]
         room <- try(
-          process_seating(e, ilc, cont, first, row, col, sel, rooms[[j]]),
+          process_seating(e, ilc, cont, first_row, row, first_col, col, sel, byrow, rooms[[j]]),
           silent = TRUE
         )
         if (inherits(room, "try-error")) {

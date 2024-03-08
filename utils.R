@@ -31,19 +31,33 @@ process_layout <- function(x) {
   x
 }
 
-process_seating <- function(e, ilc, cont, first, row, col, sel, room) {
+process_seating <- function(e, ilc, cont, first_row, row, first_col, col, sel, byrow, room) {
   room$layout$exam <- ""
   lo <- room$layout
+  if (!byrow) {
+    tmp <- lo$x
+    lo$x <- lo$y
+    lo$y <- tmp
+    tmp <- row
+    row <- col
+    col <- tmp
+    tmp <- first_row
+    first_row <- first_col
+    first_col <- tmp
+  }
   max_col <- max(lo$x)
   row_counts <- lo |>
     group_by(y) |>
     summarise(
-      idx = list(x[x %in% seq.int(first, max_col, by = col + 1L)]),
+      idx = list(x[x %in% seq.int(first_col, max_col, by = col + 1L)]),
       n = lengths(idx)
     )
   nr <- nrow(row_counts)
   rows <- seq_len(nr)
   reserved <- logical(nr)
+  if (first_row > 1) {
+    reserved[seq_len(first_row - 1)] <- TRUE
+  }
   free_row <- 0L
   for (i in seq_len(nrow(e))) {
     if (all(reserved)) {
@@ -85,6 +99,12 @@ process_seating <- function(e, ilc, cont, first, row, col, sel, room) {
     }
   }
   room$layout$exam <- factor(room$layout$exam, levels = sel)
+  lo <- room$layout
+  if (!byrow) {
+    tmp <- lo$x
+    lo$x <- lo$y
+    lo$y <- tmp
+  }
   room
 }
 
