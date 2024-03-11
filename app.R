@@ -122,7 +122,7 @@ ui <- fluidPage(
               "Summary",
               value = "summary",
               br(),
-              DT::dataTableOutput("exam_standard", width = "500px"),
+              DT::dataTableOutput("exam_standard", width = "650px"),
               br(),
               strong("Multiple exams"),
               DT::dataTableOutput("exam_multi", width = "66%"),
@@ -747,6 +747,7 @@ server <- function(input, output, session) {
             p <- p +
               geom_tile(
                 data = assigned,
+                color = "black",
                 aes(x = x, y = y, width = 1, height = 1, fill = exam)
               ) +
               geom_tile(fill = "transparent", color = "black")
