@@ -465,15 +465,15 @@ server <- function(input, output, session) {
             count() |>
             arrange(desc(n)),
           data.frame(
-            exam = "Multiple exams", 
+            exam = "Multiple exams",
             n = length(unique(multi$id))
           ),
           data.frame(
-            exam = "Special arrangements", 
+            exam = "Special arrangements",
             n = length(unique(special$id))
           ),
           data.frame(
-            exam = "Total", 
+            exam = "Total",
             n = n_distinct(rvals$exam$id)
           )
         ) |>
@@ -481,7 +481,7 @@ server <- function(input, output, session) {
         class = "compact cell-border",
         rownames = FALSE,
         options = list(
-          dom = "t", 
+          dom = "t",
           ordering = FALSE,
           pageLength = 10000,
           autoWidth = TRUE
@@ -598,6 +598,11 @@ server <- function(input, output, session) {
           type = "warning"
         )
       }
+    }
+    for (i in seq_along(rooms)) {
+      val <- rooms[[i]]$value
+      rvals$rooms_ok[[val]] <- FALSE
+      rvals$plots[[val]] <- NULL
     }
   })
 
@@ -812,12 +817,17 @@ server <- function(input, output, session) {
     filename = "seating.pdf",
     content = function(file) {
       pdf(file, paper = "a4", width = 8.5, height = 11)
+      n <- names(rooms)
       for (i in seq_along(rooms)) {
         val <- rooms[[i]]$value
         if (rvals$rooms_ok[[val]]) {
           plot(
             rvals$plots[[val]] +
-              theme(plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "in"))
+              ggtitle(n[[i]]) +
+              theme(
+                plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "in"),
+                plot.title = element_text(hjust = 0.5)
+              )
           )
         }
       }
