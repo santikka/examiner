@@ -31,7 +31,7 @@ process_layout <- function(x) {
   x
 }
 
-process_seating <- function(e, ilc, cont, first_row, row, first_col, col, sel, byrow, room) {
+process_seating <- function(e, ilc, cont, first_row, row, first_col, col, sel, byrow, offset, room) {
   room$layout$exam <- ""
   lo <- room$layout
   if (!byrow) {
@@ -81,6 +81,13 @@ process_seating <- function(e, ilc, cont, first_row, row, first_col, col, sel, b
     }
     idx_last <- idx[fit_idx[1L]]
     idx_used <- idx[seq_len(which(idx == idx_last))]
+    if (offset > 0) {
+      for (j in seq_len(offset)) {
+        idx_used_offset <- idx_used + j
+        idx_used_offset <- idx_used_offset[idx_used_offset <= length(reserved)]
+        reserved[idx_used_offset] <- TRUE
+      }
+    }
     for (j in idx_used) {
       row_idx <- row_counts$idx[[j]]
       row_offset <- length(row_idx) - row_counts$n[j]

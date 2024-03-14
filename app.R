@@ -19,6 +19,9 @@ options(shiny.fullstacktrace = TRUE)
 
 source("utils.R")
 
+
+# Constants ---------------------------------------------------------------
+
 rooms <- rjson::fromJSON(file = "rooms.json") |> process_layout()
 nm <- names(rooms)
 rooms_plot_basis <- lapply(rooms, function(room) {
@@ -71,6 +74,9 @@ js_code <- "
     }
   }
 "
+
+
+# User Interface ----------------------------------------------------------
 
 ui <- fluidPage(
   tags$head(
@@ -201,6 +207,9 @@ ui <- fluidPage(
   )
 )
 
+
+# Server ------------------------------------------------------------------
+
 server <- function(input, output, session) {
 
   hide_tabs <- function() {
@@ -229,7 +238,8 @@ server <- function(input, output, session) {
     rooms_ok = list()
   )
 
-  # Add room specific elements
+#  Add room specific elements ---------------------------------------------
+
   observe({
     if (rvals$start) {
       rvals$start <- FALSE
@@ -268,7 +278,7 @@ server <- function(input, output, session) {
                 width = 2,
                 numericInput(
                   paste0(val, "_row_dist"),
-                  "Row distance",
+                  "Row distance (within exam)",
                   value = 0L,
                   min = 0L,
                   step = 1L
@@ -278,9 +288,20 @@ server <- function(input, output, session) {
                 width = 2,
                 numericInput(
                   paste0(val, "_col_dist"),
-                  "Column distance",
+                  "Column distance (within exam)",
                   value = 1L,
                   min = 0L,
+                  step = 1L
+                )
+              ),
+              column(
+                width = 2,
+                numericInput(
+                  paste0(val, "_offset"),
+                  "Offset next exam",
+                  value = 0L,
+                  min = 0L,
+                  max = 0L,
                   step = 1L
                 )
               )
@@ -329,7 +350,7 @@ server <- function(input, output, session) {
             ),
             fluidRow(
               column(
-                width = 8,
+                width = 10,
                 uiOutput(paste0(val, "_output"))
               )
             )
@@ -343,7 +364,8 @@ server <- function(input, output, session) {
     }
   })
 
-  # File input occurs
+# File input occurs -------------------------------------------------------
+
   raw_data <- reactive({
     req(input$file)
     ext <- tools::file_ext(input$file$datapath)
@@ -373,7 +395,8 @@ server <- function(input, output, session) {
     }
   })
 
-  # Uploaded file is .xlsx
+#  Uploaded file is .xlsx -------------------------------------------------
+
   observeEvent(raw_data(), {
     hide_tabs()
     valid <- TRUE
@@ -431,7 +454,8 @@ server <- function(input, output, session) {
     )
   })
 
-  # Summarise exams
+# Summarize exams ---------------------------------------------------------
+
   observe({
     exam <- rvals$exam
     if (!is.null(exam)) {
@@ -521,7 +545,8 @@ server <- function(input, output, session) {
     }
   })
 
-  # Exam partitions
+# Exam partitions ---------------------------------------------------------
+
   observe({
     exam <- rvals$exam_standard
     if (!is.null(exam)) {
@@ -564,7 +589,8 @@ server <- function(input, output, session) {
     }
   })
 
-  # Persistent partition edits
+# Persistent partition edits ----------------------------------------------
+
   observeEvent(input$exam_controls_cell_edit, {
     new <- input$exam_controls_cell_edit$value
     row <- input$exam_controls_cell_edit$row
@@ -606,7 +632,8 @@ server <- function(input, output, session) {
     }
   })
 
-  # Exam room buckets
+# Exam room buckets -------------------------------------------------------
+
   observe({
     hide_room_tabs()
     design <- rvals$design
@@ -699,7 +726,38 @@ server <- function(input, output, session) {
     }
   })
 
-  # Exam to room allocation
+
+# Offset limit update -----------------------------------------------------
+
+  lapply(seq_along(rooms), function(i) {
+    j <- nm[i]
+    val <- rooms[[j]]$value
+    observe({
+      row <- input[[paste0(val, "_row_dist")]]
+      col <- input[[paste0(val, "_col_dist")]]
+      byrow <- input[[paste0(val, "_byrow")]]
+      offset_id <- paste0(val, "_offset")
+      if (!is.null(byrow)) {
+        offset <- isolate(input[[offset_id]])
+        if (byrow) {
+          updateNumericInput(
+            inputId = offset_id,
+            value = max(min(offset, row - 1L), 0L),
+            max = max(row - 1L, 0L)
+          )
+        } else {
+          updateNumericInput(
+            inputId = offset_id,
+            value = max(min(offset, col - 1L), 0L),
+            max = max(col - 1L, 0L)
+          )
+        }
+      }
+    })
+  })
+
+# Exam to room allocation -------------------------------------------------
+
   lapply(seq_along(rooms), function(i) {
     j <- nm[i]
     val <- rooms[[j]]$value
@@ -713,6 +771,7 @@ server <- function(input, output, session) {
       row <- input[[paste0(val, "_row_dist")]]
       col <- input[[paste0(val, "_col_dist")]]
       byrow <- input[[paste0(val, "_byrow")]]
+      offset <- input[[paste0(val, "_offset")]]
       use_colors <- input[[paste0(val, "_use_colors")]]
       if (length(sel) > 0L) {
         showTab(inputId = "nav_tabs", target = val)
@@ -720,12 +779,16 @@ server <- function(input, output, session) {
           filter(exam %in% sel)
         e <- e[match(sel, e$exam), ]
         room <- try(
-          process_seating(e, ilc, cont, first_row, row, first_col, col, sel, byrow, rooms[[j]]),
+          process_seating(
+            e, ilc, cont, first_row, row, first_col, col, sel, byrow, offset, rooms[[j]]
+          ),
           silent = TRUE
         )
         if (inherits(room, "try-error")) {
           # Add red border to rank_list container when out of space
-          jss_str <- paste0("$('#", val, "_rank_list').parent().addClass('red')")
+          jss_str <- paste0(
+            "$('#", val, "_rank_list').parent().addClass('red')"
+          )
           runjs(jss_str)
           showNotification(
             paste0("Room ", j, " does not have enough space!"),
@@ -753,7 +816,11 @@ server <- function(input, output, session) {
               geom_tile(fill = "transparent", color = "black")
           } else {
             p <- p +
-              geom_point(data = assigned, aes(shape = exam), color = "black", size = 4.5) +
+              geom_point(
+                data = assigned,
+                aes(shape = exam),
+                color = "black", size = 4.5
+              ) +
               scale_shape_manual(values = seq_len(nlevels(assigned$exam))) +
               geom_tile(fill = "transparent", color = "black") +
               guides(fill = "none")
@@ -767,7 +834,9 @@ server <- function(input, output, session) {
           })
           showElement(id = paste0(val, "_students"))
           showElement(id = paste0(val, "_seating"))
-          jss_str <- paste0("$('#", val, "_rank_list').parent().removeClass('red')")
+          jss_str <- paste0(
+            "$('#", val, "_rank_list').parent().removeClass('red')"
+          )
           runjs(jss_str)
         }
       } else {
@@ -781,13 +850,16 @@ server <- function(input, output, session) {
         hideTab(inputId = "nav_tabs", target = val)
         hideElement(id = paste0(val, "_seating"))
         hideElement(id = paste0(val, "_students"))
-        jss_str <- paste0("$('#", val, "_rank_list').parent().removeClass('red')")
+        jss_str <- paste0(
+          "$('#", val, "_rank_list').parent().removeClass('red')"
+        )
         runjs(jss_str)
       }
     })
   })
 
-  # Copy email addresses to clipboard
+# Copy email addresses to clipboard ---------------------------------------
+
   observeEvent(input$clip_standard, {
     if (!is.null(rvals$exam)) {
       emails <- rvals$exam |>
@@ -800,7 +872,8 @@ server <- function(input, output, session) {
     }
   })
 
-  # Copy email addresses to clipboard (special arrangements)
+# Copy email addresses to clipboard (special arrangements) ----------------
+
   observeEvent(input$clip_special, {
     if (!is.null(rvals$exam)) {
       emails <- rvals$exam |>
@@ -813,18 +886,19 @@ server <- function(input, output, session) {
     }
   })
 
-  # Seating arrangement download links
+# Seating arrangement download links --------------------------------------
+
   output$seating <- downloadHandler(
     filename = "seating.pdf",
     content = function(file) {
       pdf(file, paper = "a4", width = 8.5, height = 11)
-      n <- names(rooms)
       for (i in seq_along(rooms)) {
-        val <- rooms[[i]]$value
+        j <- nm[i]
+        val <- rooms[[j]]$value
         if (rvals$rooms_ok[[val]]) {
           plot(
             rvals$plots[[val]] +
-              ggtitle(n[[i]]) +
+              ggtitle(j) +
               theme(
                 plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "in"),
                 plot.title = element_text(hjust = 0.5)
@@ -836,7 +910,8 @@ server <- function(input, output, session) {
     }
   )
 
-  # Student list download links by exam
+# Student list download links by exam -------------------------------------
+
   output$students_exams <- downloadHandler(
     filename = "exams.pdf",
     content = function(file) {
@@ -856,7 +931,8 @@ server <- function(input, output, session) {
     }
   )
 
-  # Student list download links by room
+# Student list download links by room -------------------------------------
+
   output$students_rooms <- downloadHandler(
     filename = "rooms.pdf",
     content = function(file) {
@@ -887,7 +963,8 @@ server <- function(input, output, session) {
     }
   )
 
-  # List of exams by room
+# List of exams by room ---------------------------------------------------
+
   output$exam_list <- downloadHandler(
     filename = "exam_list.pdf",
     content = function(file) {
