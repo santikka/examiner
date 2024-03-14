@@ -199,6 +199,24 @@ ui <- fluidPage(
                 "exam_list",
                 "Export a list of exams by room"
               )
+            ),
+            tabPanel(
+              "About",
+              value = "about",
+              br(),
+              fluidRow(
+                column(
+                  width = 12,
+                  p(
+                    "If you encouter a bug with the software or have
+                    suggestions, please submit a new issue on ",
+                    a("GitHub.", href = "https://github.com/santikka/examiner")
+                  ),
+                  p(
+                    "You can also contact santtu 'dot' tikka 'at' jyu 'dot' fi"
+                  )
+                )
+              )
             )
           )
         )
@@ -229,6 +247,7 @@ server <- function(input, output, session) {
     showTab(inputId = "nav_tabs", target = "summary")
     showTab(inputId = "nav_tabs", target = "design")
     showTab(inputId = "nav_tabs", target = "output")
+    updateTabsetPanel(inputId = "nav_tabs", selected = "summary")
   }
 
   rvals <- reactiveValues(

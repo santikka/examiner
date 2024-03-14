@@ -1,2 +1,3 @@
 # examiner
-A Shiny application for arranging exams
+
+A Shiny application for arranging exams.
