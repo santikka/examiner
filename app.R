@@ -566,27 +566,12 @@ server <- function(input, output, session) {
       ) |>
         rename(`Exam` = exam, `Number of students` = n),
       width = "650px"
-      #class = "compact cell-border",
-      #rownames = FALSE,
-      #options = list(
-      #  dom = "t",
-      #  ordering = FALSE,
-      #  pageLength = 10000,
-      #  autoWidth = TRUE
     )
     output$exam_multi <- renderTable(
       multi |>
         select(last, first, exam) |>
         rename(`Last name` = last, `First name` = first, `Exams` = exam),
       width = "66%"
-      #class = "compact cell-border",
-      #rownames = FALSE,
-      #options = list(
-      #  dom = "t",
-      #  ordering = FALSE,
-      #  pageLength = 10000,
-      #  autoWidth = TRUE
-      #)
     )
     output$exam_special <- renderTable(
       special |>
@@ -598,14 +583,6 @@ server <- function(input, output, session) {
           `Special arrangements` = special
         ),
       width = "66%"
-      #class = "compact cell-border",
-      #rownames = FALSE,
-      #options = list(
-      #  dom = "t",
-      #  ordering = FALSE,
-      #  pageLength = 10000,
-      #  autoWidth = TRUE
-      #)
     )
   })
 
