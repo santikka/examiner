@@ -128,13 +128,13 @@ ui <- fluidPage(
               "Summary",
               value = "summary",
               br(),
-              DT::dataTableOutput("exam_standard", width = "650px"),
+              tableOutput("exam_standard"),
               br(),
               strong("Multiple exams"),
-              DT::dataTableOutput("exam_multi", width = "66%"),
+              tableOutput("exam_multi"),
               br(),
               strong("Special arrangements"),
-              DT::dataTableOutput("exam_special", width = "66%"),
+              tableOutput("exam_special"),
               br()
             ),
             tabPanel(
@@ -401,11 +401,43 @@ server <- function(input, output, session) {
           )
         )
         try(
-          read.delim(
-              input$file$datapath,
-              skipNul = TRUE,
-              fileEncoding = "UTF-16LE"
-          ),
+          {
+            # Try to read normally first
+            d <- try(
+              read.delim(
+                file = input$file$datapath,
+                colClasses = "character",
+                fileEncoding = "UTF-16LE",
+                skipNul = TRUE
+              ),
+              silent = TRUE
+            )
+            if (inherits(d, "try-error")) {
+              # Something is wrong with the file
+              # Try to skip first line in case of missing column names
+              d <- read.delim(
+                file = input$file$datapath,
+                header = FALSE,
+                row.names = NULL,
+                colClasses = "character",
+                skip = 1L,
+                fileEncoding = "UTF-16LE",
+                skipNul = TRUE
+              )
+              names(d)[1:9] <- c(
+                "opiskelijanumero",
+                "sukunimi",
+                "etunimet",
+                "ensisijainen sähköposti",
+                "ilmoittautumisen tila",
+                "tentti",
+                "paikkatiedot",
+                "suorituskieli",
+                "lisätietokysymykset"
+              )
+            }
+            d
+          },
           silent = TRUE
         )
       }
@@ -416,7 +448,13 @@ server <- function(input, output, session) {
 
 #  Uploaded file is .xlsx -------------------------------------------------
 
-  observeEvent(raw_data(), {
+  observe({
+    req(raw_data())
+    rvals$exam <- NULL
+    rvals$exam_standard <- NULL
+    rvals$multi_id <- NULL
+    rvals$design <- NULL
+    e <- raw_data()
     hide_tabs()
     valid <- TRUE
     if (inherits(raw_data(), "try-error")) {
@@ -424,7 +462,6 @@ server <- function(input, output, session) {
       valid <- FALSE
     }
     req(valid)
-    e <- raw_data()
     e_names <- tolower(names(e))
     e_names <- gsub("\\s", "\\.", e_names)
     names(e) <- e_names
@@ -441,7 +478,7 @@ server <- function(input, output, session) {
       showFeedbackDanger(
         "file",
         paste0(
-          "Invalid .xlsx file, missing columns: ",
+          "Invalid input file, missing columns: ",
           paste0(toupper(req_names[mis]), collapse = ", ")
         )
       )
@@ -449,6 +486,12 @@ server <- function(input, output, session) {
     }
     req(valid)
     hideFeedback("file")
+    if (ncol(e) > 9) {
+      showFeedbackWarning(
+        "file",
+        "The input file contains nonstandard columns which have been dropped"
+      )
+    }
     show_tabs()
     e <- e |>
       rename(
@@ -476,136 +519,138 @@ server <- function(input, output, session) {
 # Summarize exams ---------------------------------------------------------
 
   observe({
+    req(rvals$exam)
     exam <- rvals$exam
-    if (!is.null(exam)) {
-      # Students with special arrangements
-      special <- exam |>
-        filter(special %in% input$special_groups)
 
-      # Students with multiple exams
-      multi_id <- exam |>
-        filter(!special %in% input$special_groups) |>
-        select(id) |>
-        reframe(id = id, dupe = duplicated(id)) |>
-        filter(dupe == TRUE) |>
-        pull(id)
-      rvals$multi_id <- multi_id
-      multi <- exam |>
-        filter(!special %in% input$special_groups) |>
-        filter(id %in% multi_id)
+    # Students with special arrangements
+    special <- exam |>
+      filter(special %in% input$special_groups)
 
-      # Others
-      exam <- exam |>
-        filter(!special %in% input$special_groups) |>
-        filter(!id %in% multi_id)
-      rvals$exam_standard <- exam
+    # Students with multiple exams
+    multi_id <- exam |>
+      filter(!special %in% input$special_groups) |>
+      select(id) |>
+      reframe(id = id, dupe = duplicated(id)) |>
+      filter(dupe == TRUE) |>
+      pull(id)
+    rvals$multi_id <- multi_id
+    multi <- exam |>
+      filter(!special %in% input$special_groups) |>
+      filter(id %in% multi_id)
 
-      # Summaries
-      output$exam_standard <- DT::renderDataTable(
-        rbind(
-          exam |>
-            group_by(exam) |>
-            count() |>
-            arrange(desc(n)),
-          data.frame(
-            exam = "Multiple exams",
-            n = length(unique(multi$id))
-          ),
-          data.frame(
-            exam = "Special arrangements",
-            n = length(unique(special$id))
-          ),
-          data.frame(
-            exam = "Total",
-            n = n_distinct(rvals$exam$id)
-          )
-        ) |>
-          rename(`Exam` = exam, `Number of students` = n),
-        class = "compact cell-border",
-        rownames = FALSE,
-        options = list(
-          dom = "t",
-          ordering = FALSE,
-          pageLength = 10000,
-          autoWidth = TRUE
+    # Others
+    exam <- exam |>
+      filter(!special %in% input$special_groups) |>
+      filter(!id %in% multi_id)
+    rvals$exam_standard <- exam
+
+    # Summaries
+    output$exam_standard <- renderTable(
+      rbind(
+        exam |>
+          group_by(exam) |>
+          count() |>
+          arrange(desc(n)),
+        data.frame(
+          exam = "Multiple exams",
+          n = length(unique(multi$id))
+        ),
+        data.frame(
+          exam = "Special arrangements",
+          n = length(unique(special$id))
+        ),
+        data.frame(
+          exam = "Total",
+          n = n_distinct(rvals$exam$id)
         )
-      )
-      output$exam_multi <- DT::renderDataTable(
-        multi |>
-          select(last, first, exam) |>
-          rename(`Last name` = last, `First name` = first, `Exams` = exam),
-        class = "compact cell-border",
-        rownames = FALSE,
-        options = list(
-          dom = "t",
-          ordering = FALSE,
-          pageLength = 10000,
-          autoWidth = TRUE
-        )
-      )
-      output$exam_special <- DT::renderDataTable(
-        special |>
-          select(last, first, exam, special) |>
-          rename(
-            `Last name` = last,
-            `First name` = first,
-            `Exam` = exam,
-            `Special arrangements` = special
-          ),
-        class = "compact cell-border",
-        rownames = FALSE,
-        options = list(
-          dom = "t",
-          ordering = FALSE,
-          pageLength = 10000,
-          autoWidth = TRUE
-        )
-      )
-    }
+      ) |>
+        rename(`Exam` = exam, `Number of students` = n),
+      width = "650px"
+      #class = "compact cell-border",
+      #rownames = FALSE,
+      #options = list(
+      #  dom = "t",
+      #  ordering = FALSE,
+      #  pageLength = 10000,
+      #  autoWidth = TRUE
+    )
+    output$exam_multi <- renderTable(
+      multi |>
+        select(last, first, exam) |>
+        rename(`Last name` = last, `First name` = first, `Exams` = exam),
+      width = "66%"
+      #class = "compact cell-border",
+      #rownames = FALSE,
+      #options = list(
+      #  dom = "t",
+      #  ordering = FALSE,
+      #  pageLength = 10000,
+      #  autoWidth = TRUE
+      #)
+    )
+    output$exam_special <- renderTable(
+      special |>
+        select(last, first, exam, special) |>
+        rename(
+          `Last name` = last,
+          `First name` = first,
+          `Exam` = exam,
+          `Special arrangements` = special
+        ),
+      width = "66%"
+      #class = "compact cell-border",
+      #rownames = FALSE,
+      #options = list(
+      #  dom = "t",
+      #  ordering = FALSE,
+      #  pageLength = 10000,
+      #  autoWidth = TRUE
+      #)
+    )
   })
 
 # Exam partitions ---------------------------------------------------------
 
   observe({
+    req(rvals$exam_standard)
+    req(rvals$multi_id)
     exam <- rvals$exam_standard
-    if (!is.null(exam)) {
-      rvals$design <- exam |>
-        group_by(exam) |>
-        count() |>
-        arrange(desc(n)) |>
-        rbind(
-          data.frame(
-            exam = "Multiple exams",
-            n = length(unique(rvals$multi_id))
-          )
-        ) |>
-        mutate(
-          ok = 1L,
-          part1 = n,
-          part2 = 0L
-        ) |>
-        relocate(ok, .after = exam)
-      output$exam_controls <- DT::renderDT(
-        DT::datatable(
-          rvals$design |> rename(
-            `Exam` = exam,
-            `OK` = ok,
-            `Total students` = n,
-            `Part 1` = part1,
-            `Part 2` = part2
-          ),
-          class = "compact cell-border",
-          rownames = FALSE,
-          options = list(dom = "t", ordering = FALSE),
-          selection = list(mode = "single", target = "cell"),
-          editable = list(target = "cell", disable = list(columns = 0L:3L))
-        ) |> DT::formatStyle(
-          "OK",
-          target = "row",
-          backgroundColor = DT::styleEqual(c(0, 1), c("orange", "white"))
+    rvals$design <- exam |>
+      group_by(exam) |>
+      count() |>
+      arrange(desc(n)) |>
+      rbind(
+        data.frame(
+          exam = "Multiple exams",
+          n = length(unique(rvals$multi_id))
         )
+      ) |>
+      mutate(
+        ok = 1L,
+        part1 = n,
+        part2 = 0L
+      ) |>
+      relocate(ok, .after = exam)
+    output$exam_controls <- DT::renderDT(
+      DT::datatable(
+        rvals$design |> rename(
+          `Exam` = exam,
+          `OK` = ok,
+          `Total students` = n,
+          `Part 1` = part1,
+          `Part 2` = part2
+        ),
+        class = "compact cell-border",
+        rownames = FALSE,
+        options = list(dom = "t", ordering = FALSE),
+        selection = list(mode = "single", target = "cell"),
+        editable = list(target = "cell", disable = list(columns = 0L:3L))
+      ) |> DT::formatStyle(
+        "OK",
+        target = "row",
+        backgroundColor = DT::styleEqual(c(0, 1), c("orange", "white"))
       )
-    }
+    )
   })
 
 # Persistent partition edits ----------------------------------------------
@@ -654,94 +699,94 @@ server <- function(input, output, session) {
 # Exam room buckets -------------------------------------------------------
 
   observe({
+    req(rvals$design)
+    req(input$exam_rooms)
     hide_room_tabs()
     design <- rvals$design
     rooms_input <- input$exam_rooms
-    if (!is.null(design)) {
-      exams <- character(0L)
-      exams_orig <- character(0L)
-      n <- integer(0L)
-      start <- integer(0L)
-      end <- integer(0L)
-      for (i in seq_len(nrow(design))) {
-        if (design$part2[i] > 0L) {
-          exam <- rvals$exam_standard |>
-            filter(exam == design$exam[i])
-          a <- design$part1[i]
-          b <- a + 1L
-          last <- character(2L)
-          last[1L] <- paste0(
-            " (",
-            substr(exam$last[1L], 1L, 3L),
-            " - ",
-            substr(exam$last[a], 1L, 3L),
-            ")"
-          )
-          last[2L] <- paste0(
-            " (",
-            substr(exam$last[b], 1L, 3L),
-            " - ",
-            substr(exam$last[nrow(exam)], 1L, 3L),
-            ")"
-          )
-          exams <- c(
-            exams,
-            paste0(design$exam[i], last)
-          )
-          exams_orig <- c(exams_orig, rep(design$exam[i], 2L))
-          parts_n <- as.integer(design[i, c("part1", "part2")])
-          n <- c(n, parts_n)
-          start <- c(start, cumsum(c(1L, parts_n[1L])))
-          end <- c(end, cumsum(parts_n))
-        } else {
-          exams <- c(exams, design$exam[i])
-          exams_orig <- c(exams_orig, design$exam[i])
-          n <- c(n, design$n[i])
-          start <- c(start, 1L)
-          end <- c(end, design$n[i])
-        }
-      }
-      rvals$design_partition <- data.frame(
-        exam = exams,
-        exam_orig = exams_orig,
-        n = n,
-        start = start,
-        end = end
-      )
-      args <- c(
-        list(
-          add_rank_list(
-            text = "Exams",
-            labels = as.list(exams),
-            input_id = "exam_list"
-          )
-        ),
-        lapply(seq_along(rooms_input), function(i) {
-          add_rank_list(
-            text = rooms_input[i],
-            labels = NULL,
-            input_id = paste0(rooms[[rooms_input[i]]]$value, "_exams"),
-            css_id = paste0(rooms[[rooms_input[i]]]$value, "_rank_list")
-          )
-        })
-      )
-      args$header <- ""
-      args$group_name = "bucket_list_group"
-      args$orientation = "horizontal"
-      n_rooms <- length(rooms_input)
-      if (n_rooms > 0) {
-        output$exam_buckets <- renderUI({
-          fluidRow(
-            column(
-              tags$b("Drag exams to the desired rooms"),
-              width = min(12L, (n_rooms + 1L) * 3L),
-              do.call("bucket_list", args = args)
-            )
-          )
-        })
+    exams <- character(0L)
+    exams_orig <- character(0L)
+    n <- integer(0L)
+    start <- integer(0L)
+    end <- integer(0L)
+    for (i in seq_len(nrow(design))) {
+      if (design$part2[i] > 0L) {
+        exam <- rvals$exam_standard |>
+          filter(exam == design$exam[i])
+        a <- design$part1[i]
+        b <- a + 1L
+        last <- character(2L)
+        last[1L] <- paste0(
+          " (",
+          substr(exam$last[1L], 1L, 3L),
+          " - ",
+          substr(exam$last[a], 1L, 3L),
+          ")"
+        )
+        last[2L] <- paste0(
+          " (",
+          substr(exam$last[b], 1L, 3L),
+          " - ",
+          substr(exam$last[nrow(exam)], 1L, 3L),
+          ")"
+        )
+        exams <- c(
+          exams,
+          paste0(design$exam[i], last)
+        )
+        exams_orig <- c(exams_orig, rep(design$exam[i], 2L))
+        parts_n <- as.integer(design[i, c("part1", "part2")])
+        n <- c(n, parts_n)
+        start <- c(start, cumsum(c(1L, parts_n[1L])))
+        end <- c(end, cumsum(parts_n))
       } else {
-        output$exam_buckets <- renderUI(br())
+        exams <- c(exams, design$exam[i])
+        exams_orig <- c(exams_orig, design$exam[i])
+        n <- c(n, design$n[i])
+        start <- c(start, 1L)
+        end <- c(end, design$n[i])
       }
+    }
+    rvals$design_partition <- data.frame(
+      exam = exams,
+      exam_orig = exams_orig,
+      n = n,
+      start = start,
+      end = end
+    )
+    args <- c(
+      list(
+        add_rank_list(
+          text = "Exams",
+          labels = as.list(exams),
+          input_id = "exam_list"
+        )
+      ),
+      lapply(seq_along(rooms_input), function(i) {
+        add_rank_list(
+          text = rooms_input[i],
+          labels = NULL,
+          input_id = paste0(rooms[[rooms_input[i]]]$value, "_exams"),
+          css_id = paste0(rooms[[rooms_input[i]]]$value, "_rank_list")
+        )
+      })
+    )
+    args$header <- ""
+    args$group_name = "bucket_list_group"
+    args$orientation = "horizontal"
+    n_rooms <- length(rooms_input)
+    if (n_rooms > 0) {
+      output$exam_buckets <- renderUI({
+        fluidRow(
+          column(
+            tags$b("Drag exams to the desired rooms"),
+            width = min(12L, (n_rooms + 1L) * 3L),
+            do.call("bucket_list", args = args)
+          )
+        )
+      })
+    } else {
+      output$exam_buckets <- renderUI(br())
     }
   })
 
