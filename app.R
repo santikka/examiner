@@ -590,24 +590,28 @@ server <- function(input, output, session) {
 
   observe({
     req(rvals$exam_standard)
-    req(rvals$multi_id)
-    exam <- rvals$exam_standard
-    rvals$design <- exam |>
+    exam <- rvals$exam_standard |>
       group_by(exam) |>
       count() |>
       arrange(desc(n)) |>
-      rbind(
-        data.frame(
-          exam = "Multiple exams",
-          n = length(unique(rvals$multi_id))
-        )
-      ) |>
       mutate(
         ok = 1L,
         part1 = n,
         part2 = 0L
       ) |>
       relocate(ok, .after = exam)
+    if (length(rvals$multi_id) > 0L) {
+      exam <- exam |>
+        rbind(
+          data.frame(
+            exam = "Multiple exams",
+            part1 = length(unique(rvals$multi_id)),
+            part2 = 0L,
+            ok = 1L
+          )
+        )
+    }
+    rvals$design <- exam
     output$exam_controls <- DT::renderDT(
       DT::datatable(
         rvals$design |> rename(
