@@ -605,6 +605,7 @@ server <- function(input, output, session) {
         rbind(
           data.frame(
             exam = "Multiple exams",
+            n = length(unique(rvals$multi_id)),
             part1 = length(unique(rvals$multi_id)),
             part2 = 0L,
             ok = 1L
